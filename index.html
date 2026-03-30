@@ -128,6 +128,26 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 
 ::-webkit-scrollbar { width: 5px; }
 
+/* SPLIT ROUTE */
+.split-info { padding: 14px 16px; background: #e0f2fe; border-bottom: 1px solid #bae6fd; font-size: 12px; color: #075985; line-height: 1.6; }
+.split-info strong { color: #0369a1; }
+.split-stops { max-height: 340px; overflow-y: auto; padding: 10px 12px; }
+.split-stop { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 4px; cursor: pointer; transition: background .1s; }
+.split-stop:hover { background: #f3f4f6; }
+.split-stop input[type=radio] { accent-color: #0284c7; width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; }
+.split-stop .sp-num { width: 22px; height: 22px; border-radius: 50%; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.split-stop .sp-num.done { background: #16a34a; color: #fff; }
+.split-stop .sp-num.todo { background: #e5e7eb; color: #6b7280; }
+.split-stop .sp-addr { font-size: 11px; line-height: 1.3; }
+.split-stop .sp-street { font-weight: 700; }
+.split-stop .sp-city { color: #6b7280; font-size: 10px; }
+.split-divider { display: flex; align-items: center; gap: 8px; padding: 4px 12px; font-size: 10px; font-weight: 700; color: #0284c7; letter-spacing: .5px; }
+.split-divider::before, .split-divider::after { content: ''; flex: 1; height: 1px; background: #bae6fd; }
+.split-new-name { padding: 10px 16px; border-top: 1px solid var(--rule); background: var(--cream); }
+.split-new-name label { font-size: 11px; font-weight: 700; color: var(--navy); display: block; margin-bottom: 5px; }
+.split-new-name input { width: 100%; padding: 6px 10px; border: 1.5px solid var(--rule); border-radius: 4px; font-size: 13px; outline: none; }
+.split-new-name input:focus { border-color: #0284c7; }
+
 /* STATUS BADGES */
 /* status-sel removed — replaced by rv-btn system */
 
@@ -371,6 +391,18 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
     <div class="mf">
       <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeReview()">Close</button>
       <button class="btn bpurple" onclick="saveReview()">💾 Save Results</button>
+    </div>
+  </div>
+</div>
+
+<!-- SPLIT ROUTE MODAL -->
+<div class="ov" id="ovSplit">
+  <div class="mod" style="max-width:560px;">
+    <div class="mh">✂️ Split Route <button onclick="closeSplit()">×</button></div>
+    <div class="mb" id="mbSplit" style="padding:0;"></div>
+    <div class="mf">
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeSplit()">Cancel</button>
+      <button class="btn bo" style="background:#0284c7;" onclick="confirmSplit()">✂️ Split & Create New Route</button>
     </div>
   </div>
 </div>
@@ -867,6 +899,7 @@ function renderSavedRoutes() {
         <button class="btn bpurple" onclick="openReview(${r.id})">📋 Review Results</button>
         <button class="btn bg" onclick="reprintSaved(${r.id})">🖨 Reprint</button>
         <button class="btn bo" onclick="loadRouteForEdit(${r.id})">✏️ Edit Route</button>
+        <button class="btn bh" style="color:var(--navy);border-color:var(--rule);background:#e0f2fe;border-color:#0284c7;color:#075985;" onclick="openSplitRoute(${r.id})">✂️ Split Route</button>
         <button class="btn bh" style="color:var(--navy);border-color:var(--rule);" onclick="focusSaved(${r.id})">🗺️ Show on Map</button>
         <button class="btn br" onclick="deleteSaved(${r.id})">🗑 Delete</button>
       </div>
@@ -1491,6 +1524,129 @@ function exportReportCSV() {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   a.download = 'canvassing-report.csv'; a.click();
+}
+
+// ── SPLIT ROUTE ──────────────────────────────────
+let splitRouteId = null;
+let splitAtIndex = null; // index of LAST completed stop (0-based)
+
+function openSplitRoute(id) {
+  splitRouteId = id;
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === id);
+  if (!route || !route.stops.length) return;
+
+  // Default split point: last stop that has a status, or stop 1
+  const lastReviewed = route.stops.reduce((last, s, i) => s.status ? i : last, -1);
+  splitAtIndex = lastReviewed >= 0 ? lastReviewed : 0;
+
+  const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  const mb = document.getElementById('mbSplit');
+  mb.innerHTML = `
+    <div class="split-info">
+      <strong>✂️ ${x(route.name)}</strong><br>
+      Select the <strong>last stop completed</strong> — everything above stays on the original route. Everything below becomes a new route for the next session.
+    </div>
+    <div class="split-stops" id="splitStopsList">
+      ${route.stops.map((s, i) => `
+        <div class="split-stop" onclick="setSplitAt(${i})">
+          <input type="radio" name="splitAt" id="sp_${i}" value="${i}" ${i === splitAtIndex ? 'checked' : ''}/>
+          <div class="sp-num ${i <= splitAtIndex ? 'done' : 'todo'}" id="spnum_${i}">${i+1}</div>
+          <div class="sp-addr">
+            <div class="sp-street">${x(s.street)}</div>
+            <div class="sp-city">${x(s.city)}</div>
+          </div>
+          ${s.status ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;background:${statusBg(s.status)};color:${statusColor(s.status)};margin-left:auto;">${x(s.status)}</span>` : ''}
+        </div>
+      `).join('')}
+    </div>
+    <div class="split-new-name">
+      <label>Name for the new (remaining) route:</label>
+      <input type="text" id="splitNewName" value="Continued — ${today}" placeholder="e.g. Continued — Mar 31"/>
+    </div>`;
+
+  closeSavedRoutes();
+  document.getElementById('ovSplit').classList.add('on');
+  updateSplitDivider();
+}
+
+function setSplitAt(idx) {
+  splitAtIndex = idx;
+  document.querySelectorAll('[name="splitAt"]').forEach((r, i) => {
+    r.checked = i === idx;
+    const num = document.getElementById('spnum_' + i);
+    if (num) { num.className = 'sp-num ' + (i <= idx ? 'done' : 'todo'); }
+  });
+  updateSplitDivider();
+}
+
+function updateSplitDivider() {
+  // Remove existing dividers
+  document.querySelectorAll('.split-divider').forEach(d => d.remove());
+  if (splitAtIndex === null) return;
+  const list = document.getElementById('splitStopsList');
+  if (!list) return;
+  const rows = list.querySelectorAll('.split-stop');
+  if (splitAtIndex < rows.length - 1) {
+    const divider = document.createElement('div');
+    divider.className = 'split-divider';
+    divider.textContent = 'NEW ROUTE STARTS HERE';
+    rows[splitAtIndex + 1].parentNode.insertBefore(divider, rows[splitAtIndex + 1]);
+  }
+}
+
+function closeSplit() {
+  document.getElementById('ovSplit').classList.remove('on');
+  openSavedRoutes();
+}
+document.getElementById('ovSplit').addEventListener('click', e => { if (e.target === e.currentTarget) closeSplit(); });
+
+function confirmSplit() {
+  if (splitRouteId === null || splitAtIndex === null) return;
+  const newName = document.getElementById('splitNewName')?.value.trim();
+  if (!newName) { alert('Please enter a name for the new route.'); return; }
+
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === splitRouteId);
+  if (!route) return;
+
+  const completedStops = route.stops.slice(0, splitAtIndex + 1);
+  const remainingStops = route.stops.slice(splitAtIndex + 1);
+
+  if (!remainingStops.length) { alert('No remaining stops to split into a new route. Try selecting an earlier stop.'); return; }
+
+  // Update original route to only contain completed stops
+  route.stops = completedStops;
+  route.stopCount = completedStops.length;
+
+  // Create new route with remaining stops (statuses cleared — fresh start)
+  const newRoute = {
+    id: Date.now(),
+    name: newName,
+    canvasser: route.canvasser || '',
+    date: new Date().toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }),
+    stopCount: remainingStops.length,
+    startTime: '',
+    endTime: '',
+    stops: remainingStops.map(s => ({
+      ...s,
+      status: '', // clear status — fresh session
+    }))
+  };
+
+  // Add new route at the top
+  routes.unshift(newRoute);
+  putSavedRoutes(routes);
+  loadPastMarkersFromStorage();
+
+  document.getElementById('ovSplit').classList.remove('on');
+  openSavedRoutes();
+
+  alert(`✅ Done!
+
+"${route.name}" now has ${completedStops.length} completed stops.
+"${newName}" has ${remainingStops.length} stops ready for the next session.`);
 }
 
 // ── BACKUP EXPORT / IMPORT ───────────────────────
