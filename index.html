@@ -282,12 +282,9 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 <!-- SAVED ROUTES MODAL -->
 <div class="ov" id="ovSaved">
   <div class="mod">
-    <div class="mh" style="flex-direction:column;align-items:flex-start;gap:4px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
-        <span>📂 Saved Routes</span>
-        <button onclick="closeSavedRoutes()">×</button>
-      </div>
-      <div style="font-size:10px;color:#f97316;font-weight:600;letter-spacing:.3px;">⚠️ Routes live in your browser — export a backup regularly so you never lose data.</div>
+    <div class="mh">
+      <span>📂 Saved Routes</span>
+      <button onclick="closeSavedRoutes()">×</button>
     </div>
     <div class="mb" id="mbSaved"></div>
     <div class="mf">
@@ -839,7 +836,7 @@ function renderSavedRoutes() {
   const mb = document.getElementById('mbSaved');
 
   if (!routes.length) {
-    mb.innerHTML = `<div class="sr-empty">📭<br><br>No saved routes yet.<br>Build a route and click <b>💾 Save</b> in the sidebar to save it here.<br><br><span style="font-size:11px;color:#e8601a;font-weight:700;">⚠️ Routes are stored in your browser.<br>Use ⬇ Export Backup regularly to save your data!</span></div>`;
+    mb.innerHTML = `<div class="sr-empty">📭<br><br>No saved routes yet.<br>Build a route and click <b>💾 Save</b> in the sidebar to save it here.</div>`;
     return;
   }
 
