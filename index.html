@@ -1,0 +1,1571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CanvasRoute</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --navy: #1a2744; --navy2: #253460; --orange: #e8601a;
+  --cream: #f5f0e8; --paper: #faf8f4; --ink: #1a1a1a;
+  --mid: #6b7280; --rule: #d4cfc5; --green: #2d7a45; --red: #c0392b;
+}
+html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; background: var(--navy); }
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* HEADER */
+#hdr { height: 50px; flex-shrink: 0; background: var(--navy); border-bottom: 3px solid var(--orange); display: flex; align-items: center; gap: 8px; padding: 0 12px; z-index: 1000; }
+.logo { font-size: 16px; font-weight: 900; color: #fff; white-space: nowrap; }
+.logo em { color: var(--orange); font-style: normal; }
+.sbox { position: relative; display: flex; gap: 5px; flex: 1; max-width: 400px; }
+.sbox input { flex: 1; padding: 6px 10px; background: rgba(255,255,255,.12); border: 1.5px solid rgba(255,255,255,.25); color: #fff; font-size: 13px; border-radius: 4px; outline: none; }
+.sbox input::placeholder { color: rgba(255,255,255,.4); }
+.sbox input:focus { border-color: var(--orange); }
+.pac-container { z-index: 99999 !important; font-family: Arial, sans-serif; font-size: 13px; }
+.btn { padding: 6px 12px; border: none; border-radius: 4px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: opacity .15s; }
+.btn:hover { opacity: .85; }
+.bo { background: var(--orange); color: #fff; }
+.bg { background: var(--green); color: #fff; }
+.br { background: var(--red); color: #fff; }
+.bh { background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,.35); }
+.bpurple { background: #6b3fa0; color: #fff; }
+.hr { margin-left: auto; display: flex; gap: 6px; }
+
+/* BODY */
+#bdy { display: flex; flex: 1; min-height: 0; }
+
+/* SIDEBAR */
+#sb { width: 270px; flex-shrink: 0; background: var(--paper); display: flex; flex-direction: column; border-right: 1px solid var(--rule); overflow: hidden; }
+.sbh { background: var(--navy); color: #fff; padding: 8px 12px; font-size: 12px; font-weight: 700; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+.badge { background: var(--orange); color: #fff; font-size: 11px; padding: 1px 7px; border-radius: 10px; }
+.hint { padding: 7px 12px; background: #fffbe6; border-bottom: 1px solid #f0e090; font-size: 11px; color: #7a6800; line-height: 1.5; flex-shrink: 0; }
+#list { flex: 1; overflow-y: auto; padding: 6px; }
+.emp { text-align: center; padding: 28px 14px; color: var(--mid); font-size: 12px; line-height: 1.6; }
+.itm { display: flex; align-items: flex-start; gap: 7px; padding: 7px 8px; background: #fff; border: 1px solid var(--rule); border-radius: 4px; margin-bottom: 4px; cursor: pointer; transition: border-color .15s; }
+.itm:hover { border-color: var(--orange); }
+.itm.active { border-color: var(--orange); background: #fff8f3; }
+.sn { width: 20px; height: 20px; background: var(--navy); color: #fff; border-radius: 50%; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+.ad { flex: 1; font-size: 11px; line-height: 1.4; }
+.ad .st { font-weight: 700; }
+.ad .ci { color: var(--mid); font-size: 10px; }
+.dl { background: none; border: none; cursor: pointer; color: #ccc; font-size: 15px; flex-shrink: 0; padding: 0 2px; }
+.dl:hover { color: var(--red); }
+.note-box { width: 100%; margin-top: 6px; padding: 4px 6px; border: 1px solid #e2ddd6; border-radius: 3px; font-size: 11px; font-family: Arial, sans-serif; resize: none; outline: none; color: var(--ink); background: #fdfcfa; line-height: 1.4; }
+.note-box:focus { border-color: var(--orange); background: #fff; }
+.note-label { font-size: 10px; color: var(--mid); margin-top: 5px; font-weight: 700; letter-spacing: .3px; }
+.sbf { padding: 8px; border-top: 1px solid var(--rule); display: flex; gap: 5px; flex-shrink: 0; flex-wrap: wrap; }
+.sbf .btn { flex: 1; text-align: center; font-size: 11px; min-width: 60px; }
+
+/* MAP */
+#mw { flex: 1; position: relative; }
+#map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+.pill { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 999; background: rgba(26,39,68,.9); color: #fff; padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; pointer-events: none; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 10px rgba(0,0,0,.4); }
+.dot { width: 7px; height: 7px; background: var(--orange); border-radius: 50%; animation: pulse 1.2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.5)} }
+
+/* PAST ROUTE LEGEND on map */
+.past-legend { position: absolute; bottom: 20px; right: 14px; z-index: 999; background: rgba(255,255,255,.93); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 10px; font-size: 11px; box-shadow: 0 2px 8px rgba(0,0,0,.2); display: none; }
+.past-legend.on { display: block; }
+.past-legend-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.past-legend-row:last-child { margin-bottom: 0; }
+.pl-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+/* MODALS */
+.ov { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 9000; display: none; align-items: center; justify-content: center; }
+.ov.on { display: flex; }
+.mod { background: #fff; border-radius: 6px; width: 94vw; max-width: 860px; max-height: 92vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.5); overflow: hidden; }
+.mod-sm { max-width: 480px; }
+.mh { background: var(--navy); color: #fff; padding: 12px 16px; font-size: 15px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+.mh button { background: none; border: none; color: rgba(255,255,255,.6); font-size: 20px; cursor: pointer; }
+.mh button:hover { color: #fff; }
+.mt { padding: 8px 16px; background: var(--cream); border-bottom: 1px solid var(--rule); display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; }
+.mt label { font-size: 12px; font-weight: 700; color: var(--navy); }
+.mt input[type="text"] { padding: 5px 9px; border: 1px solid var(--rule); border-radius: 4px; font-size: 13px; width: 190px; }
+.tab-btns { display: flex; gap: 0; border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.tab-btn { padding: 5px 12px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; background: #fff; color: var(--navy); transition: background .15s; }
+.tab-btn.active { background: var(--navy); color: #fff; }
+.mb { flex: 1; overflow-y: auto; padding: 16px; background: #fff; }
+.mf { padding: 8px 16px; border-top: 1px solid var(--rule); background: var(--cream); display: flex; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+
+/* SHEET STYLES */
+.sheet-wrap { font-family: Arial, sans-serif; }
+.shh { margin-bottom: 14px; padding-bottom: 10px; border-bottom: 3px solid #1a2744; display: flex; justify-content: space-between; align-items: flex-end; }
+.sht { font-size: 20px; font-weight: 900; color: #1a2744; }
+.shm { font-size: 11px; color: #6b7280; text-align: right; line-height: 1.7; }
+.ct { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+.ct th { background: #1a2744; color: #fff; font-size: 11px; font-weight: 700; padding: 7px 9px; text-align: left; border: 1px solid #253460; }
+.ct td { border: 1px solid #d4cfc5; padding: 9px; vertical-align: top; word-wrap: break-word; }
+.ct tr:nth-child(even) td { background: #f8f5f0; }
+.wl { display: block; border-bottom: 1px solid #bbb; min-height: 12px; margin-bottom: 0; }
+
+/* MAP PAGE */
+.map-page .shh { margin-bottom: 12px; padding-bottom: 10px; border-bottom: 3px solid #1a2744; display: flex; justify-content: space-between; align-items: flex-end; }
+.map-img-wrap { border: 2px solid #1a2744; border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
+.map-img-wrap img { width: 100%; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.leg-item { display: flex; align-items: center; gap: 6px; font-size: 11px; background: #f8f5f0; border: 1px solid #d4cfc5; border-radius: 4px; padding: 4px 8px; }
+.leg-num { width: 18px; height: 18px; background: #1a2744; color: #fff; border-radius: 50%; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.leg-num.first { background: #2d7a45; }
+.leg-num.last  { background: #e8601a; }
+
+/* SAVED ROUTES LIST */
+.sr-item { background: #fff; border: 1px solid var(--rule); border-radius: 5px; padding: 10px 12px; margin-bottom: 8px; }
+.sr-item:hover { border-color: #6b3fa0; }
+.sr-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.sr-name { font-weight: 700; font-size: 13px; color: var(--navy); }
+.sr-meta { font-size: 11px; color: var(--mid); margin-top: 2px; }
+.sr-actions { display: flex; gap: 5px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; margin-top: 8px; }
+.sr-actions .btn { font-size: 11px; padding: 4px 10px; }
+.sr-empty { text-align: center; padding: 30px 20px; color: var(--mid); font-size: 13px; line-height: 1.6; }
+
+/* SAVE MODAL */
+.save-form { padding: 20px; }
+.save-form label { display: block; font-size: 13px; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+.save-form input { width: 100%; padding: 8px 12px; border: 1.5px solid var(--rule); border-radius: 4px; font-size: 14px; outline: none; }
+.save-form input:focus { border-color: #6b3fa0; }
+.save-form .save-hint { font-size: 11px; color: var(--mid); margin-top: 6px; }
+
+::-webkit-scrollbar { width: 5px; }
+
+/* STATUS BADGES */
+/* status-sel removed — replaced by rv-btn system */
+
+/* REVIEW MODAL STOP ROW */
+.rv-item { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 5px; margin-bottom: 5px; background: #fff; transition: background .1s; }
+.rv-item.has-status { background: #fafafa; }
+.rv-top { display: flex; align-items: center; gap: 8px; }
+.rv-num  { width: 22px; height: 22px; background: var(--navy); color: #fff; border-radius: 50%; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.rv-addr { flex: 1; font-size: 11px; line-height: 1.4; }
+.rv-addr .st { font-weight: 700; }
+.rv-addr .ci { color: var(--mid); font-size: 10px; }
+.rv-addr .nt { color: #555; font-size: 10px; margin-top: 2px; font-style: italic; }
+.rv-btns { display: flex; flex-wrap: wrap; gap: 5px; padding-left: 30px; }
+.rv-btn { padding: 4px 11px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1.5px solid #d1d5db; background: #f9fafb; color: #6b7280; transition: all .12s; white-space: nowrap; }
+.rv-btn:hover { background: #e5e7eb; color: #374151; border-color: #9ca3af; }
+/* ACTIVE state — bold white on solid color, easy to see */
+.rv-btn.active.s-lead        { background: #16a34a; border-color: #16a34a; color: #fff; }
+.rv-btn.active.s-later       { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+.rv-btn.active.s-not-home    { background: #d97706; border-color: #d97706; color: #fff; }
+.rv-btn.active.s-not-int     { background: #dc2626; border-color: #dc2626; color: #fff; }
+.rv-btn.active.s-busy        { background: #475569; border-color: #475569; color: #fff; }
+.rv-btn.active.s-no-sol      { background: #db2777; border-color: #db2777; color: #fff; }
+.rv-btn.active.s-renting     { background: #0284c7; border-color: #0284c7; color: #fff; }
+.rv-btn.active.s-painted     { background: #b45309; border-color: #b45309; color: #fff; }
+
+/* NEW STATUS COLORS */
+
+
+/* TIME FIELDS in review */
+.time-row { display: flex; gap: 16px; padding: 12px 0 4px; align-items: center; flex-wrap: wrap; }
+.time-field { display: flex; flex-direction: column; gap: 3px; }
+.time-field label { font-size: 11px; font-weight: 700; color: var(--navy); }
+.time-field input { padding: 5px 8px; border: 1.5px solid var(--rule); border-radius: 4px; font-size: 13px; outline: none; width: 140px; }
+.time-field input:focus { border-color: var(--orange); }
+.time-calc { font-size: 12px; font-weight: 700; color: #6b3fa0; background: #f3e8ff; padding: 5px 10px; border-radius: 4px; align-self: flex-end; }
+
+/* REPORT MODAL */
+.rpt-filters { padding: 12px 16px; background: var(--cream); border-bottom: 1px solid var(--rule); display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; flex-shrink: 0; }
+.rpt-filter { display: flex; flex-direction: column; gap: 3px; }
+.rpt-filter label { font-size: 11px; font-weight: 700; color: var(--navy); }
+.rpt-filter select, .rpt-filter input { padding: 5px 8px; border: 1.5px solid var(--rule); border-radius: 4px; font-size: 12px; outline: none; background: #fff; min-width: 130px; }
+.rpt-filter select:focus, .rpt-filter input:focus { border-color: #6b3fa0; }
+
+.rpt-summary { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--rule); background: #faf8ff; flex-shrink: 0; }
+.stat-card { background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 8px 14px; text-align: center; min-width: 80px; }
+.stat-card .sc-num { font-size: 22px; font-weight: 900; color: var(--navy); line-height: 1; }
+.stat-card .sc-lbl { font-size: 10px; color: var(--mid); margin-top: 2px; font-weight: 700; letter-spacing: .3px; }
+.stat-card.highlight { border-color: var(--orange); background: #fff8f3; }
+.stat-card.highlight .sc-num { color: var(--orange); }
+
+.rpt-results { flex: 1; overflow-y: auto; padding: 10px 16px; }
+.rpt-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--rule); border-radius: 4px; margin-bottom: 5px; background: #fff; font-size: 12px; }
+.rpt-row .rr-num { width: 20px; height: 20px; background: var(--navy); color: #fff; border-radius: 50%; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.rpt-row .rr-addr { flex: 1; }
+.rpt-row .rr-street { font-weight: 700; font-size: 11px; }
+.rpt-row .rr-city { font-size: 10px; color: var(--mid); }
+.rpt-row .rr-note { font-size: 10px; color: #555; font-style: italic; }
+.rpt-row .rr-route { font-size: 10px; color: #6b3fa0; }
+.rpt-row .rr-status { flex-shrink: 0; }
+.rpt-empty { text-align: center; padding: 40px 20px; color: var(--mid); font-size: 13px; }
+
+/* canvasser select in save dialog */
+.save-form select { width: 100%; padding: 8px 10px; border: 1.5px solid var(--rule); border-radius: 4px; font-size: 14px; outline: none; margin-top: 4px; background: #fff; }
+.save-form select:focus { border-color: #6b3fa0; }
+::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 3px; }
+
+@media print {
+  body > * { display: none !important; }
+  #printTarget { display: block !important; font-family: Arial, sans-serif; }
+}
+
+/* SYNC STATUS */
+#syncStatus { position:fixed; bottom:8px; left:50%; transform:translateX(-50%); z-index:3000; background:rgba(26,39,68,.92); color:#fff; padding:5px 14px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:.4px; display:none; align-items:center; gap:6px; box-shadow:0 2px 10px rgba(0,0,0,.3); pointer-events:none; }
+#syncStatus.on { display:flex; }
+#syncStatus .spin { width:10px; height:10px; border:2px solid rgba(255,255,255,.3); border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+#loadingScreen { position:fixed; inset:0; background:var(--navy); z-index:99999; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; }
+#loadingScreen .ls-logo { font-size:28px; font-weight:900; color:#fff; }
+#loadingScreen .ls-logo em { color:var(--orange); font-style:normal; }
+#loadingScreen .ls-msg { font-size:13px; color:rgba(255,255,255,.6); }
+#loadingScreen .ls-spin { width:30px; height:30px; border:3px solid rgba(255,255,255,.2); border-top-color:var(--orange); border-radius:50%; animation:spin .8s linear infinite; }
+</style>
+</head>
+<body>
+<div id="loadingScreen">
+  <div class="ls-logo">📋 <em>CANVAS</em>ROUTE</div>
+  <div class="ls-spin"></div>
+  <div class="ls-msg">Connecting to cloud…</div>
+</div>
+<div id="syncStatus"><div class="spin"></div><span id="syncMsg">Saving…</span></div>
+<div id="app" style="display:none;">
+  <div id="hdr">
+    <div class="logo">📋 <em>CANVAS</em>ROUTE</div>
+    <div class="sbox">
+      <input type="text" id="searchInput" placeholder="Search neighborhood, street, city…" autocomplete="off"/>
+      <button class="btn bo" onclick="doSearch()">GO</button>
+    </div>
+    <div class="hr">
+      <button class="btn bh" id="modeBtn" onclick="toggleMode()">📌 ADDING STOPS</button>
+      <button class="btn bpurple" onclick="openSavedRoutes()">📂 SAVED ROUTES</button>
+      <button class="btn bo" style="background:#0f766e;" onclick="openReport()">📊 REPORT</button>
+      <button class="btn bg" onclick="openModal()">🖨 PRINT</button>
+      <button class="btn br" onclick="clearAll()">✕ CLEAR</button>
+    </div>
+  </div>
+
+  <div id="bdy">
+    <div id="sb">
+      <div class="sbh">ROUTE STOPS <span class="badge" id="cnt">0</span></div>
+      <div class="hint">🖱 <b>Click the map</b> to add stops. <b>Drag any pin</b> to move it — address updates automatically.</div>
+      <div id="list"><div class="emp">🗺️<br><br>Search for a neighborhood above,<br>then click the map to add stops.</div></div>
+      <div class="sbf">
+        <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="exportCSV()">⬇ CSV</button>
+        <button class="btn bpurple" onclick="openSaveDialog()">💾 Save</button>
+        <button class="btn bg" onclick="openModal()">🖨 Print</button>
+      </div>
+    </div>
+    <div id="mw">
+      <div id="map"></div>
+      <div class="pill" id="pill"><div class="dot"></div>CLICK MAP TO ADD STOPS</div>
+      <div class="past-legend" id="pastLegend">
+        <div style="font-size:10px;font-weight:700;color:#1a2744;margin-bottom:5px;letter-spacing:.5px;">MAP KEY</div>
+        <div class="past-legend-row"><div class="pl-dot" style="background:#1a2744;"></div><span>Current route</span></div>
+        <div class="past-legend-row"><div class="pl-dot" style="background:#9ca3af;border:1px solid #ccc;"></div><span>Already canvassed</span></div>
+      </div>
+    </div>
+  </div>
+</div><!-- end #app -->
+
+<!-- PRINT MODAL -->
+<div class="ov" id="ov">
+  <div class="mod">
+    <div class="mh">🖨 Print Preview <button onclick="closeModal()">×</button></div>
+    <div class="mt">
+      <label>Title:</label>
+      <input type="text" id="ttl" value="Canvassing Route" oninput="renderModal()"/>
+      <div class="tab-btns">
+        <button class="tab-btn active" id="tabSheet" onclick="switchTab('sheet')">📋 Address Sheet</button>
+        <button class="tab-btn" id="tabMap" onclick="switchTab('map')">🗺️ Route Map</button>
+        <button class="tab-btn" id="tabBoth" onclick="switchTab('both')">📄 Both</button>
+      </div>
+      <button class="btn bo" style="margin-left:auto;" onclick="printSheet()">🖨 Print / Save PDF</button>
+    </div>
+    <div class="mb" id="mb"></div>
+    <div class="mf">
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeModal()">Close</button>
+      <button class="btn bo" onclick="printSheet()">🖨 Print / Save PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- SAVED ROUTES MODAL -->
+<div class="ov" id="ovSaved">
+  <div class="mod">
+    <div class="mh" style="flex-direction:column;align-items:flex-start;gap:4px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+        <span>📂 Saved Routes</span>
+        <button onclick="closeSavedRoutes()">×</button>
+      </div>
+      <div style="font-size:10px;color:#f97316;font-weight:600;letter-spacing:.3px;">⚠️ Routes live in your browser — export a backup regularly so you never lose data.</div>
+    </div>
+    <div class="mb" id="mbSaved"></div>
+    <div class="mf">
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeSavedRoutes()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- SAVE DIALOG MODAL -->
+<div class="ov" id="ovSave">
+  <div class="mod mod-sm">
+    <div class="mh"><span id="saveDialogTitle">💾 Save This Route</span> <button onclick="closeSaveDialog()">×</button></div>
+    <div class="save-form">
+      <label for="saveRouteName">Route Name</label>
+      <input type="text" id="saveRouteName" placeholder="e.g. Suncrest Dr — March 24" autocomplete="off"/>
+      <label for="saveCanvasser" style="margin-top:12px;display:block;">Canvasser</label>
+      <select id="saveCanvasser">
+        <option value="">— Select canvasser —</option>
+        <option value="Meleah Thompson">Meleah Thompson</option>
+        <option value="Benjamin Chabot">Benjamin Chabot</option>
+        <option value="Brayden Owen">Brayden Owen</option>
+      </select>
+      <div class="save-hint" id="saveHint" style="margin-top:8px;">Give this route a name so you can find it later.</div>
+    </div>
+    <div class="mf">
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeSaveDialog()">Cancel</button>
+      <button class="btn bpurple" id="saveDialogBtn" onclick="confirmSave()">💾 Save Route</button>
+    </div>
+  </div>
+</div>
+
+<!-- REPORTS MODAL -->
+<div class="ov" id="ovReport">
+  <div class="mod" style="max-width:900px;">
+    <div class="mh">📊 Canvassing Report <button onclick="document.getElementById('ovReport').classList.remove('on')">×</button></div>
+    <div class="rpt-filters">
+      <div class="rpt-filter">
+        <label>Canvasser</label>
+        <select id="rptCanvasser" onchange="renderReport()">
+          <option value="">All Canvassers</option>
+          <option value="Meleah Thompson">Meleah Thompson</option>
+          <option value="Benjamin Chabot">Benjamin Chabot</option>
+          <option value="Brayden Owen">Brayden Owen</option>
+        </select>
+      </div>
+      <div class="rpt-filter">
+        <label>Status</label>
+        <select id="rptStatus" onchange="renderReport()">
+          <option value="">All Statuses</option>
+          <option value="Lead">Lead</option>
+          <option value="Lead Contact Later">Lead Contact Later</option>
+          <option value="Not Home">Not Home</option>
+          <option value="Not Interested">Not Interested</option>
+          <option value="Busy">Busy</option>
+          <option value="No Soliciting">No Soliciting</option>
+          <option value="Renting">Renting</option>
+          <option value="Recently Painted">Recently Painted</option>
+        </select>
+      </div>
+      <div class="rpt-filter">
+        <label>Date From</label>
+        <input type="date" id="rptDateFrom" onchange="renderReport()"/>
+      </div>
+      <div class="rpt-filter">
+        <label>Date To</label>
+        <input type="date" id="rptDateTo" onchange="renderReport()"/>
+      </div>
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);align-self:flex-end;" onclick="clearRptFilters()">↺ Reset</button>
+      <button class="btn bg" style="align-self:flex-end;" onclick="exportReportCSV()">⬇ Export CSV</button>
+    </div>
+    <div class="rpt-summary" id="rptSummary"></div>
+    <div class="rpt-results" id="rptResults"></div>
+    <div class="mf">
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="document.getElementById('ovReport').classList.remove('on')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- REVIEW RESULTS MODAL -->
+<div class="ov" id="ovReview">
+  <div class="mod">
+    <div class="mh" id="reviewTitle">📋 Review Results <button onclick="closeReview()">×</button></div>
+    <div class="mb" id="mbReview"></div>
+    <div class="mf">
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeReview()">Close</button>
+      <button class="btn bpurple" onclick="saveReview()">💾 Save Results</button>
+    </div>
+  </div>
+</div>
+
+<div id="printTarget" style="display:none;"></div>
+
+<script>
+const GKEY = 'AIzaSyDkGHFm4k4YE8jmQjcbage3R-PzOTBf1HQ';
+// ── FIRESTORE CLOUD STORAGE ──────────────────────
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBmRc1mkrHrjJsmu27dFPNrgocSqL_JjX0",
+  authDomain: "paintpals-canvasroute.firebaseapp.com",
+  projectId: "paintpals-canvasroute",
+  storageBucket: "paintpals-canvasroute.firebasestorage.app",
+  messagingSenderId: "32139069297",
+  appId: "1:32139069297:web:b4b0ef80b8a1b0409298d0"
+};
+
+let db = null;
+let routesCache = []; // in-memory cache — all reads come from here (synchronous)
+let syncTimer = null;
+
+function initFirebase() {
+  firebase.initializeApp(FIREBASE_CONFIG);
+  db = firebase.firestore();
+  db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); // offline support
+}
+
+async function loadRoutesFromCloud() {
+  try {
+    const snap = await db.collection('routes').orderBy('id', 'desc').get();
+    routesCache = snap.docs.map(d => d.data());
+  } catch(e) {
+    console.warn('Firestore load failed, using localStorage fallback:', e);
+    try { routesCache = JSON.parse(localStorage.getItem('canvasroute_backup') || '[]'); } catch(_) { routesCache = []; }
+  }
+}
+
+function showSync(msg) {
+  const el = document.getElementById('syncStatus');
+  const msgEl = document.getElementById('syncMsg');
+  if (el && msgEl) { msgEl.textContent = msg; el.classList.add('on'); }
+}
+function hideSync() {
+  const el = document.getElementById('syncStatus');
+  if (el) el.classList.remove('on');
+}
+
+let map, geocoder, polyline = null;
+let stops = [], addMode = true, idc = 0;
+let currentTab = 'sheet';
+let pastMarkers = [];   // gray markers for previously saved routes
+let printStopsRef = []; // used when reprinting a saved route
+
+// ── INIT ─────────────────────────────────────────
+window.initMap = function() {
+  map = new google.maps.Map(document.getElementById('map'), {
+    center: { lat: 40.5854, lng: -105.0844 },
+    zoom: 14,
+    mapTypeId: 'roadmap',
+    fullscreenControl: false,
+    streetViewControl: false,
+    mapTypeControl: true,
+    styles: [{ featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] }]
+  });
+  geocoder = new google.maps.Geocoder();
+
+  const input = document.getElementById('searchInput');
+  const ac = new google.maps.places.Autocomplete(input, { types: ['geocode', 'establishment'] });
+  ac.addListener('place_changed', () => {
+    const p = ac.getPlace();
+    if (p.geometry) { map.setCenter(p.geometry.location); map.setZoom(17); }
+    else doSearch();
+  });
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') setTimeout(doSearch, 100); });
+
+  map.addListener('click', e => { if (addMode) addStop(e.latLng); });
+
+  // Load routes from cloud then reveal app
+  loadRoutesFromCloud().then(() => {
+    renderList();
+    loadPastMarkersFromStorage();
+    document.getElementById('loadingScreen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+  });
+};
+
+// ── MARKER ICONS ─────────────────────────────────
+function mkIcon(n, type) {
+  const bg = type === 'first' ? '%232d7a45' : type === 'last' ? '%23e8601a' : '%231a2744';
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='42' viewBox='0 0 32 42'><path d='M16 0C7.2 0 0 7.2 0 16c0 12 16 26 16 26S32 28 32 16C32 7.2 24.8 0 16 0z' fill='${bg}' stroke='white' stroke-width='2'/><text x='16' y='20' text-anchor='middle' dominant-baseline='middle' fill='white' font-family='Arial' font-size='13' font-weight='700'>${n}</text></svg>`;
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg.replace(/%23/g, '#').replace(/'/g, "'")),
+    scaledSize: new google.maps.Size(32, 42),
+    anchor: new google.maps.Point(16, 42)
+  };
+}
+
+function mkPastIcon() {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18'><circle cx='9' cy='9' r='8' fill='%239ca3af' stroke='white' stroke-width='1.5'/></svg>`;
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg.replace(/%23/g, '#')),
+    scaledSize: new google.maps.Size(18, 18),
+    anchor: new google.maps.Point(9, 9)
+  };
+}
+
+function refreshIcons() {
+  stops.forEach((s, i) => {
+    const t = stops.length === 1 ? 'first' : i === 0 ? 'first' : i === stops.length - 1 ? 'last' : 'mid';
+    s.marker.setIcon(mkIcon(i + 1, t));
+  });
+}
+
+// ── ROUTE LINE ────────────────────────────────────
+function redrawLine() {
+  if (polyline) polyline.setMap(null);
+  if (stops.length < 2) return;
+  polyline = new google.maps.Polyline({
+    path: stops.map(s => s.pos),
+    geodesic: true,
+    strokeColor: '#e8601a',
+    strokeOpacity: 0.9,
+    strokeWeight: 4,
+    icons: [{ icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 4, strokeColor: '#e8601a', fillColor: '#e8601a', fillOpacity: 1 }, offset: '50%', repeat: '100px' }],
+    map
+  });
+}
+
+// ── ADD STOP ──────────────────────────────────────
+function addStop(latLng) {
+  const id = ++idc;
+  const marker = new google.maps.Marker({
+    position: latLng, map,
+    icon: mkIcon(stops.length + 1, stops.length === 0 ? 'first' : 'mid'),
+    zIndex: 100 + stops.length,
+    draggable: true,
+    cursor: 'grab'
+  });
+  marker.addListener('click', () => highlight(id));
+  marker.addListener('dragstart', () => { marker.setOpacity(0.6); });
+  marker.addListener('dragend', (e) => {
+    marker.setOpacity(1);
+    const stop = stops.find(s => s.id === id);
+    if (!stop) return;
+    stop.pos = e.latLng;
+    stop.street = 'Loading…';
+    stop.city = '';
+    stop.fullAddress = '';
+    redrawLine();
+    renderList();
+    reverseGeocode(e.latLng, id);
+  });
+  stops.push({ id, pos: latLng, street: 'Loading…', city: '', fullAddress: '', note: '', marker });
+  refreshIcons(); redrawLine(); renderList();
+  reverseGeocode(latLng, id);
+}
+
+function reverseGeocode(latLng, id) {
+  geocoder.geocode({ location: latLng }, (results, status) => {
+    const stop = stops.find(s => s.id === id);
+    if (!stop) return;
+    if (status === 'OK' && results[0]) {
+      const r = results.find(r => r.types.includes('street_address') || r.types.includes('premise'))
+        || results.find(r => r.types.includes('route')) || results[0];
+      const comps = r.address_components;
+      const get = t => (comps.find(c => c.types.includes(t)) || {}).short_name || '';
+      const getL = t => (comps.find(c => c.types.includes(t)) || {}).long_name || '';
+      stop.street = [get('street_number'), getL('route')].filter(Boolean).join(' ') || 'Unknown Street';
+      stop.city = [getL('locality') || getL('sublocality') || '', get('administrative_area_level_1'), get('postal_code')].filter(Boolean).join(', ');
+      stop.fullAddress = r.formatted_address;
+    } else {
+      stop.street = `${latLng.lat().toFixed(5)}, ${latLng.lng().toFixed(5)}`;
+      stop.city = ''; stop.fullAddress = stop.street;
+    }
+    renderList();
+  });
+}
+
+// ── SIDEBAR ───────────────────────────────────────
+function renderList() {
+  document.getElementById('cnt').textContent = stops.length;
+  const l = document.getElementById('list');
+  if (!stops.length) { l.innerHTML = '<div class="emp">🗺️<br><br>No stops yet.<br>Click the map to begin.</div>'; return; }
+  l.innerHTML = stops.map((s, i) => `
+    <div class="itm" id="i${s.id}">
+      <div class="sn" onclick="highlight(${s.id})" style="cursor:pointer;flex-shrink:0;">${i + 1}</div>
+      <div class="ad" style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;" onclick="highlight(${s.id})" style="cursor:pointer;">
+          <div>
+            ${s.street === 'Loading…' ? '<span style="color:#999;font-style:italic;">Fetching address…</span>'
+              : `<div class="st">${x(s.street)}</div><div class="ci">${x(s.city)}</div>`}
+          </div>
+        </div>
+        <div class="note-label">NOTE</div>
+        <textarea class="note-box" rows="2" placeholder="Add a note for this stop…" onclick="event.stopPropagation()" oninput="saveNote(${s.id}, this.value)">${x(s.note||'')}</textarea>
+      </div>
+      <button class="dl" onclick="event.stopPropagation();del(${s.id})">×</button>
+    </div>`).join('');
+}
+
+function saveNote(id, val) {
+  const s = stops.find(s => s.id === id);
+  if (s) s.note = val;
+}
+
+function highlight(id) {
+  document.querySelectorAll('.itm').forEach(e => e.classList.remove('active'));
+  const el = document.getElementById('i' + id);
+  if (el) { el.classList.add('active'); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+  const s = stops.find(q => q.id === id);
+  if (s) {
+    map.setCenter(s.pos); map.setZoom(Math.max(map.getZoom(), 18));
+    s.marker.setAnimation(google.maps.Animation.BOUNCE);
+    setTimeout(() => s.marker.setAnimation(null), 1400);
+  }
+}
+
+function del(id) {
+  const i = stops.findIndex(s => s.id === id); if (i < 0) return;
+  stops[i].marker.setMap(null); stops.splice(i, 1);
+  refreshIcons(); redrawLine(); renderList();
+}
+
+function clearAll() {
+  if (stops.length > 0 && !confirm('Clear current route? (Saved routes are not affected.)')) return;
+  stops.forEach(s => s.marker.setMap(null)); stops = [];
+  if (polyline) { polyline.setMap(null); polyline = null; }
+  renderList();
+}
+
+// ── MODE ──────────────────────────────────────────
+function toggleMode() {
+  addMode = !addMode;
+  const b = document.getElementById('modeBtn'), p = document.getElementById('pill');
+  if (addMode) { b.textContent = '📌 ADDING STOPS'; b.className = 'btn bh'; p.style.display = 'flex'; }
+  else { b.textContent = '🖐 PAN MODE'; b.className = 'btn bo'; p.style.display = 'none'; }
+}
+
+// ── SEARCH ────────────────────────────────────────
+function doSearch() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) return;
+  geocoder.geocode({ address: q }, (results, status) => {
+    if (status === 'OK' && results[0]) {
+      map.setCenter(results[0].geometry.location);
+      if (results[0].geometry.viewport) map.fitBounds(results[0].geometry.viewport);
+      else map.setZoom(17);
+    } else {
+      alert('Address not found. Try being more specific.');
+    }
+  });
+}
+
+// ── SAVE SYSTEM ───────────────────────────────────
+function getSavedRoutes() {
+  return routesCache; // synchronous — always returns in-memory cache
+}
+
+function putSavedRoutes(routes) {
+  routesCache = routes;
+  // Also keep a localStorage backup for offline fallback
+  try { localStorage.setItem('canvasroute_backup', JSON.stringify(routes)); } catch(_) {}
+  // Debounce Firestore sync — avoids hammering on rapid updates
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => syncToFirestore(routes), 600);
+}
+
+async function syncToFirestore(routes) {
+  if (!db) return;
+  showSync('Saving to cloud…');
+  try {
+    const newIds = new Set(routes.map(r => String(r.id)));
+    // Get existing Firestore docs
+    const snap = await db.collection('routes').get();
+    const batch = db.batch();
+    // Delete routes removed locally
+    snap.docs.forEach(doc => { if (!newIds.has(doc.id)) batch.delete(doc.ref); });
+    // Upsert all current routes
+    routes.forEach(r => {
+      const ref = db.collection('routes').doc(String(r.id));
+      batch.set(ref, r);
+    });
+    await batch.commit();
+    showSync('✓ Saved');
+    setTimeout(hideSync, 1800);
+  } catch(e) {
+    console.error('Firestore sync error:', e);
+    showSync('⚠ Offline — saved locally');
+    setTimeout(hideSync, 3000);
+  }
+}
+
+function openSaveDialog() {
+  if (!stops.length) { alert('Add some stops first!'); return; }
+  if (stops.some(s => s.street === 'Loading…')) { alert('Please wait for all addresses to finish loading, then save.'); return; }
+
+  if (editingRouteId) {
+    // In edit mode — keep the pre-filled name/canvasser, just update dialog title
+    document.getElementById('saveDialogTitle').textContent = '✏️ Update Route';
+    document.getElementById('saveDialogBtn').textContent = '💾 Update Route';
+    document.getElementById('saveHint').textContent = 'Update the name or canvasser if needed, then click Update Route.';
+  } else {
+    // New route
+    const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    document.getElementById('saveRouteName').value = `Route — ${today}`;
+    document.getElementById('saveCanvasser').value = '';
+    document.getElementById('saveDialogTitle').textContent = '💾 Save This Route';
+    document.getElementById('saveDialogBtn').textContent = '💾 Save Route';
+    document.getElementById('saveHint').textContent = 'Give this route a name so you can find it later.';
+  }
+
+  document.getElementById('ovSave').classList.add('on');
+  setTimeout(() => { const i = document.getElementById('saveRouteName'); i.focus(); i.select(); }, 100);
+}
+
+function closeSaveDialog() { document.getElementById('ovSave').classList.remove('on'); }
+
+document.getElementById('ovSave').addEventListener('click', e => { if (e.target === e.currentTarget) closeSaveDialog(); });
+
+document.getElementById('saveRouteName').addEventListener('keydown', e => { if (e.key === 'Enter') confirmSave(); });
+
+function confirmSave() {
+  const name = document.getElementById('saveRouteName').value.trim();
+  const canvasser = document.getElementById('saveCanvasser').value;
+  if (!name) { alert('Please enter a route name.'); return; }
+  if (!canvasser) { alert('Please select a canvasser.'); return; }
+
+  const route = {
+    id: Date.now(),
+    name,
+    canvasser,
+    date: new Date().toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }),
+    stopCount: stops.length,
+    stops: stops.map(s => ({
+      lat: s.pos.lat(),
+      lng: s.pos.lng(),
+      street: s.street,
+      city: s.city,
+      fullAddress: s.fullAddress,
+      note: s.note || '',
+      status: ''
+    }))
+  };
+
+  const routes = getSavedRoutes();
+
+  if (editingRouteId) {
+    // Overwrite the existing route
+    const idx = routes.findIndex(r => r.id === editingRouteId);
+    if (idx !== -1) {
+      // Preserve existing timing + statuses for stops that still exist by address match
+      const oldRoute = routes[idx];
+      route.id = editingRouteId; // keep same ID
+      route.startTime = oldRoute.startTime || '';
+      route.endTime = oldRoute.endTime || '';
+      // Re-merge statuses from old route by address match
+      route.stops.forEach(ns => {
+        const old = (oldRoute.stops || []).find(os => os.fullAddress === ns.fullAddress);
+        if (old) { ns.status = ns.status || old.status || ''; }
+      });
+      routes[idx] = route;
+    } else {
+      routes.unshift(route);
+    }
+    editingRouteId = null;
+    const banner = document.getElementById('editBanner');
+    if (banner) banner.style.display = 'none';
+  } else {
+    routes.unshift(route); // new route, add at top
+  }
+
+  putSavedRoutes(routes);
+  closeSaveDialog();
+  loadPastMarkersFromStorage();
+  alert(`✅ Route "${name}" saved! You can find it under 📂 Saved Routes.`);
+}
+
+// ── PAST MARKERS ON MAP ───────────────────────────
+function clearPastMarkers() {
+  pastMarkers.forEach(m => m.setMap(null));
+  pastMarkers = [];
+}
+
+function loadPastMarkersFromStorage() {
+  clearPastMarkers();
+  const routes = getSavedRoutes();
+  if (!routes.length) { document.getElementById('pastLegend').classList.remove('on'); return; }
+
+  // Deduplicate by lat/lng — but track ALL routes a stop belongs to
+  const seen = new Map(); // key -> [routeIds]
+  routes.forEach(route => {
+    route.stops.forEach(s => {
+      const key = `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`;
+      if (!seen.has(key)) seen.set(key, { s, routeIds: [] });
+      seen.get(key).routeIds.push(route.id);
+    });
+  });
+
+  seen.forEach(({ s, routeIds }) => {
+    // Build tooltip listing all routes this stop appears in
+    const routeNames = routeIds.map(id => {
+      const r = routes.find(r => r.id === id);
+      return r ? r.name : '';
+    }).filter(Boolean);
+
+    const tooltipLines = s.street + '\n📂 ' + routeNames.join('\n📂 ');
+
+    const m = new google.maps.Marker({
+      position: { lat: s.lat, lng: s.lng },
+      map,
+      icon: mkPastIcon(),
+      title: tooltipLines,
+      zIndex: 1
+    });
+
+    // Click opens saved routes modal and highlights the first matching route
+    m.addListener('click', () => {
+      openSavedRoutes();
+      // After modal renders, scroll to and flash the first route card
+      setTimeout(() => {
+        const targetId = routeIds[0];
+        highlightRouteCard(targetId, routeIds);
+      }, 120);
+    });
+
+    pastMarkers.push(m);
+  });
+
+  document.getElementById('pastLegend').classList.add('on');
+}
+
+function highlightRouteCard(primaryId, allIds) {
+  // Scroll the first matching card into view and flash it
+  const mb = document.getElementById('mbSaved');
+  if (!mb) return;
+
+  // Find the card — route cards don't have IDs yet, so we add them in renderSavedRoutes
+  const card = document.getElementById('src_' + primaryId);
+  if (card) {
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.style.transition = 'box-shadow .2s, border-color .2s';
+    card.style.boxShadow = '0 0 0 3px #6b3fa0';
+    card.style.borderColor = '#6b3fa0';
+    setTimeout(() => {
+      card.style.boxShadow = '';
+      card.style.borderColor = '';
+    }, 2000);
+  }
+}
+
+// ── SAVED ROUTES MODAL ────────────────────────────
+function openSavedRoutes() {
+  renderSavedRoutes();
+  document.getElementById('ovSaved').classList.add('on');
+}
+
+function closeSavedRoutes() { document.getElementById('ovSaved').classList.remove('on'); }
+document.getElementById('ovSaved').addEventListener('click', e => { if (e.target === e.currentTarget) closeSavedRoutes(); });
+
+function renderSavedRoutes() {
+  const routes = getSavedRoutes();
+  const mb = document.getElementById('mbSaved');
+
+  if (!routes.length) {
+    mb.innerHTML = `<div class="sr-empty">📭<br><br>No saved routes yet.<br>Build a route and click <b>💾 Save</b> in the sidebar to save it here.<br><br><span style="font-size:11px;color:#e8601a;font-weight:700;">⚠️ Routes are stored in your browser.<br>Use ⬇ Export Backup regularly to save your data!</span></div>`;
+    return;
+  }
+
+  mb.innerHTML = routes.map(r => {
+    const done = (r.stops || []).filter(s => s.status).length;
+    const total = (r.stops || []).length;
+    const pct = total ? Math.round(done/total*100) : 0;
+    return `
+    <div class="sr-item" id="src_${r.id}">
+      <div class="sr-top">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="sr-name">${x(r.name)}</div>
+            <button onclick="renameRoute(${r.id})" style="background:none;border:1px solid #d4cfc5;border-radius:3px;font-size:10px;padding:1px 6px;cursor:pointer;color:#6b7280;" title="Rename">✏️ Rename</button>
+          </div>
+          <div class="sr-meta" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span>📅 ${r.date}</span>
+            <button onclick="editRouteDate(${r.id})" style="background:none;border:1px solid #d4cfc5;border-radius:3px;font-size:10px;padding:1px 6px;cursor:pointer;color:#6b7280;" title="Change date">✏️ Date</button>
+            <span>&nbsp;·&nbsp; 👤 ${x(r.canvasser||'Unassigned')} &nbsp;·&nbsp; 📍 ${r.stopCount} stop${r.stopCount !== 1 ? 's' : ''}</span>
+          </div>
+          <div class="sr-meta" style="margin-top:3px;">
+            <span style="color:#4b5563;">${r.stops.slice(0,2).map(s => s.street).join(', ')}${r.stops.length > 2 ? ` + ${r.stops.length - 2} more` : ''}</span>
+          </div>
+          ${done > 0 ? `<div style="margin-top:5px;font-size:10px;color:#6b3fa0;font-weight:700;">✅ ${done}/${total} stops reviewed (${pct}%)</div>` : ''}
+        </div>
+      </div>
+      <div class="sr-actions">
+        <button class="btn bpurple" onclick="openReview(${r.id})">📋 Review Results</button>
+        <button class="btn bg" onclick="reprintSaved(${r.id})">🖨 Reprint</button>
+        <button class="btn bo" onclick="loadRouteForEdit(${r.id})">✏️ Edit Route</button>
+        <button class="btn bh" style="color:var(--navy);border-color:var(--rule);" onclick="focusSaved(${r.id})">🗺️ Show on Map</button>
+        <button class="btn br" onclick="deleteSaved(${r.id})">🗑 Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function focusSaved(id) {
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === id);
+  if (!route || !route.stops.length) return;
+  closeSavedRoutes();
+  const bounds = new google.maps.LatLngBounds();
+  route.stops.forEach(s => bounds.extend({ lat: s.lat, lng: s.lng }));
+  map.fitBounds(bounds, 60);
+}
+
+function deleteSaved(id) {
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === id);
+  if (!route) return;
+  if (!confirm(`Delete "${route.name}"? This cannot be undone.`)) return;
+  putSavedRoutes(routes.filter(r => r.id !== id));
+  loadPastMarkersFromStorage();
+  renderSavedRoutes();
+}
+
+function reprintSaved(id) {
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === id);
+  if (!route) return;
+  closeSavedRoutes();
+
+  // Store route stops for print functions to use
+  printStopsRef = route.stops;
+  printStopsRef._canvasser = route.canvasser || '';
+
+  // Open print modal with saved route data
+  document.getElementById('ttl').value = route.name;
+  currentTab = 'both';
+  ['sheet','map','both'].forEach(t => document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1)).classList.remove('active'));
+  document.getElementById('tabBoth').classList.add('active');
+  renderModalFromRef();
+  document.getElementById('ov').classList.add('on');
+}
+
+// ── LOAD SAVED ROUTE FOR EDITING ────────────────
+function loadRouteForEdit(id) {
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === id);
+  if (!route) return;
+
+  const hasCurrentStops = stops.length > 0;
+  if (hasCurrentStops) {
+    const choice = confirm(`You have ${stops.length} stop(s) on the map right now.\n\nClick OK to discard them and load "${route.name}" for editing.\nClick Cancel to keep your current stops.`);
+    if (!choice) return;
+  }
+
+  // Clear current map state
+  stops.forEach(s => s.marker.setMap(null));
+  stops = [];
+  if (polyline) { polyline.setMap(null); polyline = null; }
+
+  // Close the modal
+  closeSavedRoutes();
+
+  // Store which saved route we're editing so we can overwrite it on save
+  editingRouteId = id;
+
+  // Load saved stops back onto the map
+  const bounds = new google.maps.LatLngBounds();
+  route.stops.forEach((saved, i) => {
+    const latLng = new google.maps.LatLng(saved.lat, saved.lng);
+    const stopId = ++idc;
+    const marker = new google.maps.Marker({
+      position: latLng,
+      map,
+      icon: mkIcon(i + 1, i === 0 ? 'first' : i === route.stops.length - 1 ? 'last' : 'mid'),
+      zIndex: 100 + i,
+      draggable: true,
+      cursor: 'grab'
+    });
+    marker.addListener('click', () => highlight(stopId));
+    const _sid = stopId;
+    marker.addListener('dragstart', () => { marker.setOpacity(0.6); });
+    marker.addListener('dragend', (e) => {
+      marker.setOpacity(1);
+      const stop = stops.find(s => s.id === _sid);
+      if (!stop) return;
+      stop.pos = e.latLng;
+      stop.street = 'Loading…';
+      stop.city = '';
+      stop.fullAddress = '';
+      redrawLine();
+      renderList();
+      reverseGeocode(e.latLng, _sid);
+    });
+    stops.push({
+      id: stopId,
+      pos: latLng,
+      street: saved.street,
+      city: saved.city,
+      fullAddress: saved.fullAddress,
+      note: saved.note || '',
+      status: saved.status || '',
+      marker
+    });
+    bounds.extend(latLng);
+  });
+
+  refreshIcons();
+  redrawLine();
+  renderList();
+  map.fitBounds(bounds, 60);
+
+  // Pre-fill the save dialog name + canvasser for when they re-save
+  document.getElementById('saveRouteName').value = route.name;
+  document.getElementById('saveCanvasser').value = route.canvasser || '';
+
+  // Show a banner so they know they're in edit mode
+  showEditBanner(route.name);
+}
+
+let editingRouteId = null;
+
+function showEditBanner(name) {
+  let banner = document.getElementById('editBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'editBanner';
+    banner.style.cssText = 'position:fixed;top:50px;left:0;right:0;z-index:2000;background:#1a2744;color:#fff;padding:7px 16px;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #e8601a;box-shadow:0 2px 10px rgba(0,0,0,0.4);';
+    document.body.appendChild(banner);
+  }
+  banner.innerHTML = `
+    <span>✏️ Editing: <em style="color:#e8601a;">${x(name)}</em> — Add or remove stops, then click 💾 Save to update.</span>
+    <button onclick="cancelEdit()" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer;">✕ Cancel Edit</button>
+  `;
+  banner.style.display = 'flex';
+}
+
+function cancelEdit() {
+  editingRouteId = null;
+  const banner = document.getElementById('editBanner');
+  if (banner) banner.style.display = 'none';
+}
+
+// ── RENAME ROUTE ─────────────────────────────────
+function renameRoute(id) {
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === id);
+  if (!route) return;
+  const newName = prompt('Enter new route name:', route.name);
+  if (!newName || !newName.trim()) return;
+  route.name = newName.trim();
+  putSavedRoutes(routes);
+  renderSavedRoutes();
+}
+
+function editRouteDate(id) {
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === id);
+  if (!route) return;
+
+  // Convert stored display date to YYYY-MM-DD for the date input
+  // route.date is like "Fri, Mar 27, 2026"
+  let isoVal = '';
+  try {
+    const d = new Date(route.date);
+    if (!isNaN(d)) {
+      isoVal = d.toISOString().split('T')[0];
+    }
+  } catch(e) {}
+
+  // Build a small inline date picker modal
+  const existing = document.getElementById('datePickerOverlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'datePickerOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:19999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:8px;padding:24px;min-width:300px;box-shadow:0 20px 60px rgba(0,0,0,.4);font-family:Arial,sans-serif;">
+      <div style="font-size:15px;font-weight:700;color:#1a2744;margin-bottom:16px;">📅 Change Route Date</div>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:8px;">Current: <strong>${x(route.name)}</strong></div>
+      <input type="date" id="newRouteDateInput" value="${isoVal}" style="width:100%;padding:8px 12px;border:1.5px solid #d4cfc5;border-radius:4px;font-size:14px;outline:none;margin-bottom:16px;"/>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button onclick="document.getElementById('datePickerOverlay').remove()" style="padding:7px 14px;border:1px solid #d4cfc5;border-radius:4px;background:#fff;font-size:12px;font-weight:700;cursor:pointer;color:#374151;">Cancel</button>
+        <button onclick="confirmRouteDate(${id})" style="padding:7px 14px;border:none;border-radius:4px;background:#6b3fa0;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">Save Date</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  setTimeout(() => document.getElementById('newRouteDateInput')?.focus(), 100);
+}
+
+function confirmRouteDate(id) {
+  const input = document.getElementById('newRouteDateInput');
+  if (!input || !input.value) { alert('Please pick a date.'); return; }
+  const d = new Date(input.value + 'T12:00:00'); // noon to avoid timezone shifts
+  const formatted = d.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === id);
+  if (!route) return;
+  route.date = formatted;
+  putSavedRoutes(routes);
+  document.getElementById('datePickerOverlay')?.remove();
+  renderSavedRoutes();
+}
+
+// ── MODAL ─────────────────────────────────────────
+function openModal() {
+  if (!stops.length) { alert('Add stops first!'); return; }
+  printStopsRef = []; // use current live stops
+  currentTab = 'sheet';
+  ['sheet','map','both'].forEach(t => document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1)).classList.remove('active'));
+  document.getElementById('tabSheet').classList.add('active');
+  renderModal();
+  document.getElementById('ov').classList.add('on');
+}
+function closeModal() { document.getElementById('ov').classList.remove('on'); printStopsRef = []; }
+document.getElementById('ov').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+
+function switchTab(tab) {
+  currentTab = tab;
+  ['sheet','map','both'].forEach(t => document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1)).classList.remove('active'));
+  document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+  printStopsRef.length ? renderModalFromRef() : renderModal();
+}
+
+// Get the stop list to use — either saved ref or live stops
+function getActiveStops() {
+  if (printStopsRef.length) {
+    // saved stops: lat/lng are numbers not LatLng objects
+    const arr = printStopsRef.map(s => ({
+      lat: () => s.lat, lng: () => s.lng,
+      street: s.street, city: s.city, fullAddress: s.fullAddress, note: s.note || '', status: s.status || '',
+      pos: { lat: s.lat, lng: s.lng }
+    }));
+    arr._canvasser = printStopsRef._canvasser || '';
+    return arr;
+  }
+  const arr = stops.map(s => ({
+    lat: () => s.pos.lat(), lng: () => s.pos.lng(),
+    street: s.street, city: s.city, fullAddress: s.fullAddress, note: s.note || '', status: s.status || '',
+    pos: s.pos
+  }));
+  arr._canvasser = '';
+  return arr;
+}
+
+function renderModal() {
+  const title = document.getElementById('ttl').value || 'Canvassing Route';
+  const mb = document.getElementById('mb');
+  const active = getActiveStops();
+  if (currentTab === 'sheet') mb.innerHTML = buildSheetHTML(title, active);
+  else if (currentTab === 'map') mb.innerHTML = buildMapPageHTML(title, active);
+  else mb.innerHTML = buildMapPageHTML(title, active) + '<hr style="margin:20px 0;border:2px solid #1a2744;">' + buildSheetHTML(title, active);
+}
+
+function renderModalFromRef() { renderModal(); }
+
+// ── BUILD STATIC MAP URL ──────────────────────────
+function buildStaticMapUrl(width, height, activeStops) {
+  const first = activeStops[0], last = activeStops[activeStops.length - 1];
+  const startMarker = `markers=color:green%7Clabel:S%7Csize:mid%7C${first.lat()},${first.lng()}`;
+  const endMarker   = `markers=color:orange%7Clabel:E%7Csize:mid%7C${last.lat()},${last.lng()}`;
+  const pathCoords  = activeStops.map(s => `${s.lat()},${s.lng()}`).join('|');
+  const pathParam   = `path=color:0xe8601aDD%7Cweight:3%7C${pathCoords}`;
+  return `https://maps.googleapis.com/maps/api/staticmap?size=${width}x${height}&scale=2&maptype=roadmap&${startMarker}&${endMarker}&${pathParam}&key=${GKEY}`;
+}
+
+// ── BUILD SHEET HTML ──────────────────────────────
+function buildSheetHTML(title, activeStops) {
+  const now = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  return `<div class="sheet-wrap">
+    <div class="shh">
+      <div><div class="sht">${x(title)}</div><div style="font-size:12px;color:#888;margin-top:2px;">${activeStops.length} Stop${activeStops.length !== 1 ? 's' : ''}</div></div>
+      <div class="shm">${activeStops._canvasser ? `Canvasser: <strong>${x(activeStops._canvasser)}</strong>` : 'Canvasser: ___________________'}<br>Date: ___________________<br><span style="font-size:10px;color:#bbb;">Generated ${now}</span></div>
+    </div>
+    <table class="ct">
+      <thead><tr>
+        <th style="width:24px;text-align:center;padding:5px 4px;font-size:10px;">#</th>
+        <th style="width:135px;padding:5px 5px;font-size:10px;">Name</th>
+        <th style="width:120px;padding:5px 5px;font-size:10px;">Address</th>
+        <th style="width:130px;padding:5px 5px;font-size:10px;">Phone</th>
+        <th style="width:130px;padding:5px 5px;font-size:10px;">Notes / Result</th>
+      </tr></thead>
+      <tbody>
+        ${activeStops.map((s, i) => `<tr>
+          <td style="text-align:center;font-weight:700;color:#1a2744;padding:3px 4px;font-size:10px;">${i + 1}</td>
+          <td style="padding:3px 5px;"><span class="wl">&nbsp;</span></td>
+          <td style="padding:3px 5px;line-height:1.2;"><strong style="font-size:9px;">${x(s.street)}</strong><br><span style="font-size:8px;color:#888;">${x(s.city)}</span></td>
+          <td style="padding:3px 5px;"><span class="wl">&nbsp;</span></td>
+          <td style="padding:3px 5px;">${s.status ? `<span style="font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;background:${statusBg(s.status)};color:${statusColor(s.status)};">${x(s.status)}</span>${s.note ? `<br><span style='font-size:8px;color:#555;'>${x(s.note)}</span>` : ''}` : (s.note ? `<span style="font-size:9px;color:#1a2744;">${x(s.note)}</span>` : '<span class="wl">&nbsp;</span>')}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+// ── BUILD MAP PAGE HTML ───────────────────────────
+function buildMapPageHTML(title, activeStops) {
+  const now = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const mapUrl = buildStaticMapUrl(800, 500, activeStops);
+  return `<div class="map-page">
+    <div class="shh">
+      <div><div class="sht">${x(title)} — Route Map</div><div style="font-size:12px;color:#888;margin-top:2px;">${activeStops.length} Stop${activeStops.length !== 1 ? 's' : ''}</div></div>
+      <div class="shm">Date: ___________________<br>Canvasser: ___________________<br><span style="font-size:10px;color:#bbb;">Generated ${now}</span></div>
+    </div>
+    <div class="map-img-wrap">
+      <img src="${mapUrl}" alt="Route Map" style="width:100%;display:block;" onerror="this.parentElement.innerHTML='<div style=padding:20px;text-align:center;color:#999;>Map image failed to load.</div>'"/>
+    </div>
+    <div class="legend">
+      <div class="leg-item"><div class="leg-num first">S</div><span><strong>Start — Stop #1:</strong> ${x(activeStops[0].street)}, ${x(activeStops[0].city)}</span></div>
+      <div class="leg-item"><div class="leg-num last">E</div><span><strong>End — Stop #${activeStops.length}:</strong> ${x(activeStops[activeStops.length-1].street)}, ${x(activeStops[activeStops.length-1].city)}</span></div>
+    </div>
+  </div>`;
+}
+
+// ── PRINT ─────────────────────────────────────────
+function printSheet() {
+  const title = document.getElementById('ttl').value || 'Canvassing Route';
+  const activeStops = getActiveStops();
+
+  let bodyHtml = '';
+  if (currentTab === 'map' || currentTab === 'both') bodyHtml += `<div class="print-map-page">${buildMapPageHTML(title, activeStops)}</div>`;
+  if (currentTab === 'sheet' || currentTab === 'both') bodyHtml += `<div class="print-sheet-page">${buildSheetHTML(title, activeStops)}</div>`;
+
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${title}</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#fff}
+.print-map-page{padding:20px;page-break-after:always}
+.print-sheet-page{padding:20px}
+.shh{margin-bottom:14px;padding-bottom:10px;border-bottom:3px solid #1a2744;display:flex;justify-content:space-between;align-items:flex-end}
+.sht{font-size:20px;font-weight:900;color:#1a2744}
+.shm{font-size:11px;color:#6b7280;text-align:right;line-height:1.7}
+.ct{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+.ct thead{display:table-header-group}
+.ct th{background:#1a2744!important;color:#fff!important;font-size:10px;font-weight:700;padding:5px 5px;text-align:left;border:1px solid #253460;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.ct tbody tr{page-break-inside:avoid}
+.ct td{border:1px solid #d4cfc5;padding:3px 5px;vertical-align:middle;word-wrap:break-word;font-size:9px;line-height:1.3}
+.ct tbody tr:nth-child(even) td{background:#f8f5f0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.wl{display:block;border-bottom:1px solid #bbb;min-height:12px;margin-bottom:0}
+.map-img-wrap{border:2px solid #1a2744;border-radius:4px;overflow:hidden;margin-bottom:14px}
+.map-img-wrap img{width:100%;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.leg-item{display:flex;align-items:center;gap:6px;font-size:11px;background:#f8f5f0;border:1px solid #d4cfc5;border-radius:4px;padding:4px 8px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.leg-num{width:18px;height:18px;background:#1a2744!important;color:#fff!important;border-radius:50%;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.leg-num.first{background:#2d7a45!important}
+.leg-num.last{background:#e8601a!important}
+.sheet-wrap{font-family:Arial,sans-serif}
+.map-page{font-family:Arial,sans-serif}
+</style></head><body>${bodyHtml}
+<script>
+var img=document.querySelector('.map-img-wrap img');
+function doPrint(){window.print();window.onafterprint=function(){window.close()};}
+if(img){img.onload=doPrint;img.onerror=doPrint;if(img.complete)doPrint();}else{doPrint();}
+<\/script></body></html>`;
+
+  const pw = window.open('', '_blank', 'width=900,height=700');
+  if (!pw) { alert('Pop-up blocked! Please allow pop-ups for this page and try again.'); return; }
+  pw.document.open(); pw.document.write(fullHtml); pw.document.close();
+}
+
+// ── REVIEW RESULTS ───────────────────────────────
+const STATUS_OPTS = [
+  { val: '',                   label: '— No status —',      cls: '' },
+  { val: 'Lead',               label: 'Lead',               cls: 'lead' },
+  { val: 'Lead Contact Later', label: 'Lead Contact Later', cls: 'later' },
+  { val: 'Not Home',           label: 'Not Home',           cls: 'not-home' },
+  { val: 'Not Interested',     label: 'Not Interested',     cls: 'not-int' },
+  { val: 'Busy',               label: 'Busy',               cls: 'busy' },
+  { val: 'No Soliciting',      label: 'No Soliciting',      cls: 'no-sol' },
+  { val: 'Renting',            label: 'Renting',            cls: 'renting' },
+  { val: 'Recently Painted',   label: 'Recently Painted',   cls: 'painted' },
+];
+
+let reviewRouteId = null;
+
+function openReview(id) {
+  reviewRouteId = id;
+  window._rvStatuses = {};  // reset temp status store
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === id);
+  if (!route) return;
+
+  document.getElementById('reviewTitle').innerHTML = `📋 Review Results — ${x(route.name)} <button onclick="closeReview()">×</button>`;
+
+  const mb = document.getElementById('mbReview');
+  mb.innerHTML = `
+    <div style="padding:10px 0 6px;font-size:12px;color:#555;">
+      👤 <strong>${x(route.canvasser||'Unassigned')}</strong> &nbsp;·&nbsp; 📅 ${route.date} &nbsp;·&nbsp; 📍 ${route.stops.length} stops<br>
+      <span style="font-size:11px;color:#888;margin-top:4px;display:block;">Set start/end time and a result for each stop, then click <b>Save Results</b>.</span>
+    </div>
+    <div style="background:#f0e8ff;border:1px solid #c4b5fd;border-radius:6px;padding:10px 14px;margin-bottom:12px;">
+      <div style="font-size:11px;font-weight:700;color:#5b21b6;margin-bottom:8px;">⏱ SHIFT TIMING</div>
+      <div class="time-row">
+        <div class="time-field">
+          <label>Start Time</label>
+          <input type="time" id="rvStartTime" value="${route.startTime||''}"/>
+        </div>
+        <div class="time-field">
+          <label>End Time</label>
+          <input type="time" id="rvEndTime" value="${route.endTime||''}" oninput="calcDuration()"/>
+        </div>
+        <div class="time-calc" id="durationLabel">${route.startTime && route.endTime ? calcDurationStr(route.startTime, route.endTime) : '— duration —'}</div>
+      </div>
+    </div>
+    ${route.stops.map((s, i) => {
+      const cur = s.status || '';
+      return `<div class="rv-item ${cur ? 'has-status' : ''}" id="rvi_${i}">
+        <div class="rv-top">
+          <div class="rv-num">${i+1}</div>
+          <div class="rv-addr">
+            <div class="st">${x(s.street)}</div>
+            <div class="ci">${x(s.city)}</div>
+            ${s.note ? `<div class="nt">📝 ${x(s.note)}</div>` : ''}
+          </div>
+        </div>
+        <div class="rv-btns">
+          ${STATUS_OPTS.filter(o => o.val).map(o => {
+            const isActive = cur === o.val;
+            return `<button class="rv-btn s-${o.cls}${isActive ? ' active' : ''}" onclick="setStopStatus(${i}, '${o.val}')">${o.label}</button>`;
+          }).join('')}
+          ${cur ? `<button class="rv-btn" style="color:#999;border-color:#ddd;" onclick="setStopStatus(${i}, '')">✕ Clear</button>` : ''}
+        </div>
+      </div>`;
+    }).join('')}`;
+
+  closeSavedRoutes();
+  document.getElementById('ovReview').classList.add('on');
+}
+
+function setStopStatus(idx, val) {
+  // Store in a temp map keyed by index
+  if (!window._rvStatuses) window._rvStatuses = {};
+  window._rvStatuses[idx] = val;
+
+  // Re-render just this row's buttons
+  const row = document.getElementById('rvi_' + idx);
+  if (!row) return;
+  row.classList.toggle('has-status', !!val);
+  const btnsDiv = row.querySelector('.rv-btns');
+  btnsDiv.innerHTML = STATUS_OPTS.filter(o => o.val).map(o => {
+    const isActive = val === o.val;
+    return `<button class="rv-btn s-${o.cls}${isActive ? ' active' : ''}" onclick="setStopStatus(${idx}, '${o.val}')">${o.label}</button>`;
+  }).join('') + (val ? `<button class="rv-btn" style="color:#999;border-color:#ddd;" onclick="setStopStatus(${idx}, '')">✕ Clear</button>` : '');
+}
+
+function closeReview() {
+  document.getElementById('ovReview').classList.remove('on');
+  openSavedRoutes();
+}
+
+document.getElementById('ovReview').addEventListener('click', e => { if (e.target === e.currentTarget) closeReview(); });
+
+function calcDurationStr(start, end) {
+  if (!start || !end) return '— duration —';
+  const [sh,sm] = start.split(':').map(Number);
+  const [eh,em] = end.split(':').map(Number);
+  let mins = (eh*60+em) - (sh*60+sm);
+  if (mins < 0) mins += 1440;
+  const h = Math.floor(mins/60), m = mins%60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function calcDuration() {
+  const s = document.getElementById('rvStartTime')?.value;
+  const e = document.getElementById('rvEndTime')?.value;
+  const lbl = document.getElementById('durationLabel');
+  if (lbl) lbl.textContent = calcDurationStr(s, e);
+}
+
+function saveReview() {
+  if (!reviewRouteId) return;
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === reviewRouteId);
+  if (!route) return;
+  route.stops.forEach((s, i) => {
+    if (window._rvStatuses && window._rvStatuses[i] !== undefined) {
+      s.status = window._rvStatuses[i];
+    }
+  });
+  window._rvStatuses = {};
+  const st = document.getElementById('rvStartTime')?.value;
+  const et = document.getElementById('rvEndTime')?.value;
+  if (st) route.startTime = st;
+  if (et) route.endTime = et;
+  putSavedRoutes(routes);
+  document.getElementById('ovReview').classList.remove('on');
+  openSavedRoutes();
+}
+
+// ── REPORTS ──────────────────────────────────────
+function openReport() {
+  renderReport();
+  document.getElementById('ovReport').classList.add('on');
+}
+
+function clearRptFilters() {
+  document.getElementById('rptCanvasser').value = '';
+  document.getElementById('rptStatus').value = '';
+  document.getElementById('rptDateFrom').value = '';
+  document.getElementById('rptDateTo').value = '';
+  renderReport();
+}
+
+function parseRouteDate(dateStr) {
+  // dateStr like "Mon, Mar 24, 2026" — convert to Date
+  try { return new Date(dateStr); } catch(e) { return null; }
+}
+
+function renderReport() {
+  const filterCanvasser = document.getElementById('rptCanvasser').value;
+  const filterStatus    = document.getElementById('rptStatus').value;
+  const filterFrom      = document.getElementById('rptDateFrom').value;
+  const filterTo        = document.getElementById('rptDateTo').value;
+
+  const allRoutes = getSavedRoutes();
+
+  // Filter routes by canvasser + date
+  const routes = allRoutes.filter(r => {
+    if (filterCanvasser && r.canvasser !== filterCanvasser) return false;
+    if (filterFrom || filterTo) {
+      const rd = parseRouteDate(r.date);
+      if (rd) {
+        if (filterFrom && rd < new Date(filterFrom)) return false;
+        if (filterTo   && rd > new Date(filterTo + 'T23:59:59')) return false;
+      }
+    }
+    return true;
+  });
+
+  // Flatten stops, filter by status
+  const allStops = [];
+  routes.forEach(r => {
+    (r.stops||[]).forEach((s,i) => {
+      if (filterStatus && s.status !== filterStatus) return;
+      allStops.push({ ...s, routeName: r.name, canvasser: r.canvasser||'Unassigned', routeDate: r.date, stopNum: i+1, startTime: r.startTime||'', endTime: r.endTime||'' });
+    });
+  });
+
+  // Summary stats (across filtered routes, all statuses unless filtered)
+  const stopsForStats = routes.flatMap(r => (r.stops||[]).filter(s => s.status));
+  const counts = {};
+  STATUS_OPTS.filter(o=>o.val).forEach(o => { counts[o.val] = 0; });
+  stopsForStats.forEach(s => { if (counts[s.status] !== undefined) counts[s.status]++; });
+
+  const totalAssigned = routes.reduce((a,r) => a+(r.stops||[]).length, 0);
+  const totalVisited  = stopsForStats.length;
+  const totalLeads    = (counts['Lead']||0) + (counts['Lead Contact Later']||0);
+
+  // Time stats
+  let totalMins = 0, timeRoutes = 0;
+  routes.forEach(r => {
+    if (r.startTime && r.endTime) {
+      const [sh,sm] = r.startTime.split(':').map(Number);
+      const [eh,em] = r.endTime.split(':').map(Number);
+      let m = (eh*60+em)-(sh*60+sm);
+      if (m < 0) m += 1440;
+      totalMins += m;
+      timeRoutes++;
+    }
+  });
+  const avgMinsPerStop = totalVisited && totalMins ? (totalMins/totalVisited).toFixed(1) : null;
+  const hrsTotal = Math.floor(totalMins/60), minsRem = totalMins%60;
+  const timeStr = totalMins ? `${hrsTotal}h ${minsRem}m` : '—';
+
+  // Render summary cards
+  const summaryEl = document.getElementById('rptSummary');
+  const statusCards = STATUS_OPTS.filter(o=>o.val).map(o => `
+    <div class="stat-card" style="border-color:${statusBg(o.val)};">
+      <div class="sc-num" style="color:${statusColor(o.val)};font-size:18px;">${counts[o.val]||0}</div>
+      <div class="sc-lbl">${o.label}</div>
+    </div>`).join('');
+
+  summaryEl.innerHTML = `
+    <div class="stat-card highlight"><div class="sc-num">${totalAssigned}</div><div class="sc-lbl">ASSIGNED</div></div>
+    <div class="stat-card"><div class="sc-num">${totalVisited}</div><div class="sc-lbl">REVIEWED</div></div>
+    <div class="stat-card highlight"><div class="sc-num" style="color:#2d7a45;">${totalLeads}</div><div class="sc-lbl">TOTAL LEADS</div></div>
+    ${statusCards}
+    <div class="stat-card" style="border-color:#c4b5fd;"><div class="sc-num" style="color:#6b3fa0;font-size:16px;">${timeStr}</div><div class="sc-lbl">TOTAL TIME${timeRoutes>1?' ('+timeRoutes+' routes)':''}</div></div>
+    ${avgMinsPerStop ? `<div class="stat-card" style="border-color:#c4b5fd;"><div class="sc-num" style="color:#6b3fa0;font-size:16px;">${avgMinsPerStop}m</div><div class="sc-lbl">AVG / STOP</div></div>` : ''}
+  `;
+
+  // Render result rows
+  const resultsEl = document.getElementById('rptResults');
+  if (!allStops.length) {
+    resultsEl.innerHTML = `<div class="rpt-empty">📭 No stops match your filters.<br><span style="font-size:12px;">Try adjusting the canvasser, status, or date range above.</span></div>`;
+    return;
+  }
+
+  resultsEl.innerHTML = allStops.map(s => `
+    <div class="rpt-row">
+      <div class="rr-num">${s.stopNum}</div>
+      <div class="rr-addr">
+        <div class="rr-street">${x(s.street)}</div>
+        <div class="rr-city">${x(s.city)}</div>
+        ${s.note ? `<div class="rr-note">📝 ${x(s.note)}</div>` : ''}
+        <div class="rr-route">📂 ${x(s.routeName)} &nbsp;·&nbsp; 👤 ${x(s.canvasser)} &nbsp;·&nbsp; 📅 ${s.routeDate}${s.startTime ? ` &nbsp;·&nbsp; ⏱ ${s.startTime}${s.endTime?' – '+s.endTime:''}` : ''}</div>
+      </div>
+      <div class="rr-status">
+        ${s.status ? `<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;background:${statusBg(s.status)};color:${statusColor(s.status)};">${x(s.status)}</span>` : '<span style="font-size:11px;color:#ccc;">—</span>'}
+      </div>
+    </div>`).join('');
+}
+
+function exportReportCSV() {
+  const filterCanvasser = document.getElementById('rptCanvasser').value;
+  const filterStatus    = document.getElementById('rptStatus').value;
+  const allRoutes = getSavedRoutes();
+  const rows = [['Stop#','Street','City','Full Address','Status','Note','Route','Canvasser','Date','Start Time','End Time']];
+  allRoutes.forEach(r => {
+    if (filterCanvasser && r.canvasser !== filterCanvasser) return;
+    (r.stops||[]).forEach((s,i) => {
+      if (filterStatus && s.status !== filterStatus) return;
+      rows.push([i+1, s.street, s.city, s.fullAddress, s.status||'', s.note||'', r.name, r.canvasser||'', r.date, r.startTime||'', r.endTime||'']);
+    });
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = 'canvassing-report.csv'; a.click();
+}
+
+// ── BACKUP EXPORT / IMPORT ───────────────────────
+function exportBackup() {
+  const routes = getSavedRoutes();
+  if (!routes.length) { alert('No saved routes to export.'); return; }
+  const payload = JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), routes }, null, 2);
+  const blob = new Blob([payload], { type: 'application/json' });
+  const a = document.createElement('a');
+  const dateStr = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' }).replace(/\//g, '-');
+  a.href = URL.createObjectURL(blob);
+  a.download = `canvasroute-backup-${dateStr}.json`;
+  a.click();
+}
+
+function importBackup(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.routes || !Array.isArray(data.routes)) throw new Error('Invalid file format.');
+
+      const existing = getSavedRoutes();
+      // Merge: keep existing routes, add imported ones that don't already exist (by id)
+      const existingIds = new Set(existing.map(r => r.id));
+      const newRoutes = data.routes.filter(r => !existingIds.has(r.id));
+      const merged = [...newRoutes, ...existing]; // imported go on top
+
+      putSavedRoutes(merged);
+      loadPastMarkersFromStorage();
+      renderSavedRoutes();
+
+      // Reset file input so same file can be re-imported if needed
+      input.value = '';
+
+      alert(`✅ Import complete!
+${newRoutes.length} new route(s) added.
+${data.routes.length - newRoutes.length} already existed and were skipped.`);
+    } catch(err) {
+      alert('❌ Import failed: ' + err.message + '\nMake sure you are using a CanvasRoute backup file.');
+      input.value = '';
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ── CSV ───────────────────────────────────────────
+function exportCSV() {
+  if (!stops.length) { alert('No stops.'); return; }
+  const rows = [['#','Name','Street','City/State/Zip','Full Address','Phone','Notes'],
+    ...stops.map((s, i) => [i+1, '', s.street, s.city, s.fullAddress, '', ''])];
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = 'canvassing-route.csv'; a.click();
+}
+
+function x(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function statusBg(v) {
+  return {Lead:'#dcfce7','Not Home':'#fef9c3','Not Interested':'#fee2e2','No Soliciting':'#fce7f3','Lead Contact Later':'#ede9fe',Renting:'#e0f2fe','Recently Painted':'#fef3c7',Busy:'#f1f5f9'}[v]||'#f3f4f6';
+}
+function statusColor(v) {
+  return {Lead:'#15803d','Not Home':'#92400e','Not Interested':'#991b1b','No Soliciting':'#9d174d','Lead Contact Later':'#5b21b6',Renting:'#075985','Recently Painted':'#78350f',Busy:'#334155'}[v]||'#374151';
+}
+</script>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>initFirebase();</script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDkGHFm4k4YE8jmQjcbage3R-PzOTBf1HQ&libraries=places&callback=initMap" async defer></script>
+</body>
+</html>
