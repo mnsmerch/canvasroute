@@ -99,18 +99,23 @@
 <!-- ════════ LOGIN SCREEN ════════ -->
 <div class="screen active" id="screenLogin">
   <div class="login-body">
-    <div class="login-logo">🎨</div>
-    <div class="login-title">CanvasRoute</div>
+    <img src="https://assets.cdn.filesafe.space/nPPG7BKPRH9771vRMDZ6/media/69cc2442fd3ea27e9539fbf1.png" alt="Paint Pals" style="width:110px;height:110px;object-fit:contain;margin-bottom:12px;border-radius:16px;">
+    <div class="login-title">Paint Pals</div>
     <div class="login-sub">Canvasser Portal</div>
     <div class="login-form">
       <label class="login-label" for="nameSelect">SELECT YOUR NAME</label>
       <select class="login-select" id="nameSelect">
-        <option value="">— Select your name —</option>
+        <option value="">Select name…</option>
         <option>Meleah Thompson</option>
         <option>Benjamin Chabot</option>
         <option>Brayden Owen</option>
       </select>
-      <button class="login-btn" onclick="doLogin()">Enter →</button>
+      <div id="passwordWrap" style="display:none;margin-top:14px;">
+        <label class="login-label" for="passwordInput">PASSWORD</label>
+        <input class="login-select" type="password" id="passwordInput" placeholder="Enter your password" autocomplete="current-password" style="font-size:16px;" onkeydown="if(event.key==='Enter')doLogin()">
+        <div id="loginError" style="color:#ef4444;font-size:13px;margin-top:8px;display:none;">Incorrect password. Try again.</div>
+      </div>
+      <button class="login-btn" style="margin-top:14px;" onclick="doLogin()">Enter →</button>
     </div>
   </div>
 </div>
@@ -207,6 +212,11 @@ const FIREBASE_CONFIG = {
 };
 
 const CANVASSERS = ['Meleah Thompson', 'Benjamin Chabot', 'Brayden Owen'];
+const PASSWORDS = {
+  'Meleah Thompson': 'Thompson2341',
+  'Benjamin Chabot': 'BChabot392',
+  'Brayden Owen':    'Ow3n1923'
+};
 
 const STATUS_OPTS = [
   { val: 'Lead',               bg: '#dcfce7', color: '#15803d' },
@@ -236,9 +246,31 @@ function showScreen(id) {
 }
 
 // ── LOGIN ─────────────────────────────────────────
+document.getElementById('nameSelect').addEventListener('change', function() {
+  const wrap = document.getElementById('passwordWrap');
+  const errEl = document.getElementById('loginError');
+  if (this.value) {
+    wrap.style.display = 'block';
+    document.getElementById('passwordInput').value = '';
+    errEl.style.display = 'none';
+    setTimeout(() => document.getElementById('passwordInput').focus(), 50);
+  } else {
+    wrap.style.display = 'none';
+  }
+});
+
 function doLogin() {
   const name = document.getElementById('nameSelect').value;
   if (!name) { alert('Please select your name.'); return; }
+  const pw = document.getElementById('passwordInput').value;
+  const errEl = document.getElementById('loginError');
+  if (pw !== PASSWORDS[name]) {
+    errEl.style.display = 'block';
+    document.getElementById('passwordInput').value = '';
+    document.getElementById('passwordInput').focus();
+    return;
+  }
+  errEl.style.display = 'none';
   currentCanvasser = name;
   sessionStorage.setItem('crCanvasser', name);
   showScreen('screenRoutes');
@@ -251,6 +283,9 @@ function logout() {
   currentRoute = null;
   sessionStorage.removeItem('crCanvasser');
   document.getElementById('nameSelect').value = '';
+  document.getElementById('passwordInput').value = '';
+  document.getElementById('passwordWrap').style.display = 'none';
+  document.getElementById('loginError').style.display = 'none';
   showScreen('screenLogin');
 }
 
