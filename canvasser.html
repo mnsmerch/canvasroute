@@ -551,12 +551,12 @@ async function submitLead() {
   try {
     await fetch(LEAD_WEBHOOK, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(payload)
     });
   } catch(e) {
     console.error('Webhook error:', e);
-    // Don't block — still save the status below
   }
 
   // Save the status to the route
