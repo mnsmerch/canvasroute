@@ -234,9 +234,37 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 #loadingScreen .ls-logo em { color:var(--orange); font-style:normal; }
 #loadingScreen .ls-msg { font-size:13px; color:rgba(255,255,255,.6); }
 #loadingScreen .ls-spin { width:30px; height:30px; border:3px solid rgba(255,255,255,.2); border-top-color:var(--orange); border-radius:50%; animation:spin .8s linear infinite; }
+#adminLoginScreen { position:fixed; inset:0; background:var(--navy); z-index:999999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px 24px; }
+#adminLoginScreen .al-logo { font-size:32px; font-weight:900; color:#fff; letter-spacing:1px; margin-bottom:4px; }
+#adminLoginScreen .al-logo em { color:var(--orange); font-style:normal; }
+#adminLoginScreen .al-sub { font-size:14px; color:rgba(255,255,255,.5); margin-bottom:36px; }
+#adminLoginScreen .al-form { width:100%; max-width:340px; display:flex; flex-direction:column; gap:12px; }
+#adminLoginScreen label { font-size:11px; font-weight:700; color:rgba(255,255,255,.6); letter-spacing:.6px; }
+#adminLoginScreen input { width:100%; padding:13px 14px; border:2px solid rgba(255,255,255,.15); border-radius:10px; background:rgba(255,255,255,.08); color:#fff; font-size:16px; outline:none; }
+#adminLoginScreen input:focus { border-color:var(--orange); }
+#adminLoginScreen input::placeholder { color:rgba(255,255,255,.3); }
+#adminLoginScreen .al-btn { padding:14px; background:var(--orange); color:#fff; border:none; border-radius:10px; font-size:16px; font-weight:700; cursor:pointer; margin-top:4px; }
+#adminLoginScreen .al-btn:active { background:#c0510d; }
+#adminLoginScreen .al-err { color:#fca5a5; font-size:13px; text-align:center; display:none; }
 </style>
 </head>
 <body>
+<div id="adminLoginScreen">
+  <div class="al-logo">📋 <em>CANVAS</em>ROUTE</div>
+  <div class="al-sub">Admin Portal</div>
+  <div class="al-form">
+    <div>
+      <label for="adminUser">USERNAME</label>
+      <input type="text" id="adminUser" placeholder="Username" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('adminPass').focus()">
+    </div>
+    <div>
+      <label for="adminPass">PASSWORD</label>
+      <input type="password" id="adminPass" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doAdminLogin()">
+    </div>
+    <div class="al-err" id="adminLoginErr">Incorrect username or password.</div>
+    <button class="al-btn" onclick="doAdminLogin()">Sign In →</button>
+  </div>
+</div>
 <div id="loadingScreen">
   <div class="ls-logo">📋 <em>CANVAS</em>ROUTE</div>
   <div class="ls-spin"></div>
@@ -491,6 +519,30 @@ function hideSync() {
   if (el) el.classList.remove('on');
 }
 
+// ── ADMIN AUTH ────────────────────────────────────
+let adminAuthed = !!sessionStorage.getItem('adminAuth');
+let mapsApiReady = false;
+
+(function() {
+  if (adminAuthed) document.getElementById('adminLoginScreen').style.display = 'none';
+})();
+
+function doAdminLogin() {
+  const user = document.getElementById('adminUser').value.trim();
+  const pass = document.getElementById('adminPass').value;
+  const errEl = document.getElementById('adminLoginErr');
+  if (user === 'dmeazoa' && pass === 'Stunt1001') {
+    adminAuthed = true;
+    sessionStorage.setItem('adminAuth', '1');
+    document.getElementById('adminLoginScreen').style.display = 'none';
+    if (mapsApiReady) doInitMap();
+  } else {
+    errEl.style.display = 'block';
+    document.getElementById('adminPass').value = '';
+    document.getElementById('adminPass').focus();
+  }
+}
+
 let liveTrackingData = {}; // { routeId(string): { canvasser, stopIdx, stopAddr, updatedAt } }
 
 function setupLiveTracking() {
@@ -533,6 +585,12 @@ let printStopsRef = []; // used when reprinting a saved route
 
 // ── INIT ─────────────────────────────────────────
 window.initMap = function() {
+  mapsApiReady = true;
+  if (!adminAuthed) return; // wait for login
+  doInitMap();
+};
+
+function doInitMap() {
   map = new google.maps.Map(document.getElementById('map'), {
     center: { lat: 40.5854, lng: -105.0844 },
     zoom: 14,
