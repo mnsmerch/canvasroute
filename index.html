@@ -491,14 +491,28 @@ function hideSync() {
   if (el) el.classList.remove('on');
 }
 
-let liveTrackingData = {}; // { canvasserName: { routeId, stopIdx, stopAddr, updatedAt } }
+let liveTrackingData = {}; // { routeId(string): { canvasser, stopIdx, stopAddr, updatedAt } }
 
 function setupLiveTracking() {
   if (!db) return;
-  db.collection('liveTracking').onSnapshot(snap => {
-    snap.docs.forEach(d => { liveTrackingData[d.id] = d.data(); });
+  // Watch the routes collection — canvassers write liveStopIdx + liveUpdatedAt directly to route docs
+  db.collection('routes').onSnapshot(snap => {
+    snap.docChanges().forEach(change => {
+      const data = change.doc.data();
+      const key = String(data.id);
+      if (data.liveStopIdx !== undefined && data.liveStopIdx !== null) {
+        const stop = (data.stops || [])[data.liveStopIdx];
+        liveTrackingData[key] = {
+          canvasser: data.canvasser || '',
+          routeId: data.id,
+          stopIdx: data.liveStopIdx,
+          stopAddr: stop ? stop.street : '',
+          updatedAt: data.liveUpdatedAt || ''
+        };
+      }
+    });
     if (document.getElementById('ovSaved').classList.contains('on')) renderSavedRoutes();
-  }, () => {});
+  }, err => console.warn('live tracking snapshot error:', err));
 }
 
 function timeAgo(iso) {
@@ -994,7 +1008,7 @@ function renderSavedRoutes() {
     const done = (r.stops || []).filter(s => s.status).length;
     const total = (r.stops || []).length;
     const pct = total ? Math.round(done/total*100) : 0;
-    const live = Object.values(liveTrackingData).find(t => String(t.routeId) === String(r.id));
+    const live = liveTrackingData[String(r.id)];
     return `
     <div class="sr-item" id="src_${r.id}">
       <div class="sr-top">

@@ -325,21 +325,11 @@ function renderDetailStops() {
 function tappedStop(idx) {
   if (!currentRoute) return;
 
-  // Mark as current stop
+  // Mark as current stop — write directly to the route doc so admin sees it via onSnapshot
   const stop = (currentRoute.stops || [])[idx];
   db.collection('routes').doc(String(currentRoute.id))
-    .update({ liveStopIdx: idx })
+    .update({ liveStopIdx: idx, liveUpdatedAt: new Date().toISOString() })
     .catch(e => console.warn('liveStopIdx update failed:', e));
-
-  // Write to liveTracking so admin can see it in real-time
-  db.collection('liveTracking').doc(currentCanvasser).set({
-    canvasser: currentCanvasser,
-    routeId: currentRoute.id,
-    routeName: currentRoute.name,
-    stopIdx: idx,
-    stopAddr: stop ? stop.street : '',
-    updatedAt: new Date().toISOString()
-  }).catch(e => console.warn('liveTracking write failed:', e));
 
   openStatusPicker(idx);
 }
