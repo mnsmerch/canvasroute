@@ -431,13 +431,26 @@ function initFirebase() {
   db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); // offline support
 }
 
+let cloudLoadedSuccessfully = false; // safety flag — never delete from cloud unless we loaded first
+
 async function loadRoutesFromCloud() {
   try {
     const snap = await db.collection('routes').orderBy('id', 'desc').get();
     routesCache = snap.docs.map(d => d.data());
+    cloudLoadedSuccessfully = true;
+    // Also keep localStorage in sync as backup
+    try { localStorage.setItem('canvasroute_backup', JSON.stringify(routesCache)); } catch(_) {}
+    console.log(`Loaded ${routesCache.length} routes from Firestore`);
   } catch(e) {
-    console.warn('Firestore load failed, using localStorage fallback:', e);
-    try { routesCache = JSON.parse(localStorage.getItem('canvasroute_backup') || '[]'); } catch(_) { routesCache = []; }
+    console.warn('Firestore load failed, trying localStorage backup:', e);
+    cloudLoadedSuccessfully = false;
+    try {
+      const backup = JSON.parse(localStorage.getItem('canvasroute_backup') || '[]');
+      routesCache = backup;
+      if (backup.length > 0) {
+        console.log(`Restored ${backup.length} routes from localStorage backup`);
+      }
+    } catch(_) { routesCache = []; }
   }
 }
 
@@ -664,30 +677,53 @@ function getSavedRoutes() {
 
 function putSavedRoutes(routes) {
   routesCache = routes;
-  // Also keep a localStorage backup for offline fallback
+  // Always update localStorage immediately as a backup
   try { localStorage.setItem('canvasroute_backup', JSON.stringify(routes)); } catch(_) {}
-  // Debounce Firestore sync — avoids hammering on rapid updates
+  // Debounce Firestore sync — avoids hammering on rapid updates (1s delay)
   clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => syncToFirestore(routes), 600);
+  syncTimer = setTimeout(() => syncToFirestore(routes), 1000);
 }
 
 async function syncToFirestore(routes) {
   if (!db) return;
+
+  // SAFETY GUARD: never write to Firestore if we didn't successfully load from it first
+  // This prevents wiping cloud data if the app started with an empty cache
+  if (!cloudLoadedSuccessfully) {
+    console.warn('Skipping Firestore sync — cloud was not loaded successfully. Data saved to localStorage only.');
+    showSync('⚠ Cloud not ready — saved locally');
+    setTimeout(hideSync, 3000);
+    return;
+  }
+
+  // SAFETY GUARD: never delete everything — if routes is empty and cloud has data, abort
+  if (routes.length === 0) {
+    try {
+      const check = await db.collection('routes').limit(1).get();
+      if (!check.empty) {
+        console.warn('Refusing to delete all cloud routes — local cache is empty but Firestore has data.');
+        showSync('⚠ Safety: not overwriting cloud data');
+        setTimeout(hideSync, 3000);
+        return;
+      }
+    } catch(_) { return; }
+  }
+
   showSync('Saving to cloud…');
   try {
     const newIds = new Set(routes.map(r => String(r.id)));
-    // Get existing Firestore docs
     const snap = await db.collection('routes').get();
     const batch = db.batch();
-    // Delete routes removed locally
+    // Only delete docs that we intentionally removed (not missing due to load failure)
     snap.docs.forEach(doc => { if (!newIds.has(doc.id)) batch.delete(doc.ref); });
-    // Upsert all current routes
     routes.forEach(r => {
       const ref = db.collection('routes').doc(String(r.id));
       batch.set(ref, r);
     });
     await batch.commit();
-    showSync('✓ Saved');
+    // Keep localStorage in sync
+    try { localStorage.setItem('canvasroute_backup', JSON.stringify(routes)); } catch(_) {}
+    showSync('✓ Saved to cloud');
     setTimeout(hideSync, 1800);
   } catch(e) {
     console.error('Firestore sync error:', e);
