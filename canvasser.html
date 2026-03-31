@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>CanvasRoute — Canvasser</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { font-family: Arial, sans-serif; background: #f4f0eb; min-height: 100vh; }
+
+    .screen { display: none; flex-direction: column; min-height: 100vh; }
+    .screen.active { display: flex; }
+
+    /* ── LOGIN ── */
+    .login-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 24px; }
+    .login-logo { font-size: 52px; margin-bottom: 12px; }
+    .login-title { font-size: 26px; font-weight: 700; color: #1a2744; }
+    .login-sub { font-size: 14px; color: #6b7280; margin-top: 4px; margin-bottom: 36px; }
+    .login-form { width: 100%; max-width: 340px; }
+    .login-label { font-size: 11px; font-weight: 700; color: #1a2744; letter-spacing: .6px; display: block; margin-bottom: 8px; }
+    .login-select { width: 100%; padding: 14px 12px; border: 2px solid #e5e7eb; border-radius: 10px; font-size: 16px; color: #1a2744; background: #fff; outline: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; }
+    .login-btn { width: 100%; margin-top: 14px; padding: 15px; background: #1a2744; color: #fff; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; letter-spacing: .3px; }
+    .login-btn:active { background: #0f1a30; }
+
+    /* ── TOPBAR ── */
+    .topbar { background: #1a2744; color: #fff; padding: 13px 16px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,.25); flex-shrink: 0; }
+    .topbar-title { flex: 1; font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .topbar-btn { background: rgba(255,255,255,.15); border: none; color: #fff; padding: 7px 13px; border-radius: 6px; font-size: 13px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+    .topbar-btn:active { background: rgba(255,255,255,.3); }
+
+    /* ── ROUTE CARDS ── */
+    .route-card { background: #fff; border-radius: 10px; padding: 15px 16px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08); cursor: pointer; border-left: 4px solid #6b3fa0; }
+    .route-card:active { background: #fafafa; }
+    .route-card-name { font-size: 16px; font-weight: 700; color: #1a2744; }
+    .route-card-meta { font-size: 12px; color: #6b7280; margin-top: 4px; }
+    .prog-wrap { margin-top: 10px; }
+    .prog-row { display: flex; justify-content: space-between; font-size: 11px; color: #6b7280; margin-bottom: 5px; }
+    .prog-bar { background: #e5e7eb; border-radius: 4px; height: 7px; overflow: hidden; }
+    .prog-fill { height: 100%; border-radius: 4px; transition: width .3s; }
+
+    /* ── PROGRESS HEADER ── */
+    .detail-progress { background: #fff; padding: 10px 16px; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; }
+    .detail-progress .prog-row { margin-bottom: 5px; }
+
+    /* ── CURRENT BANNER ── */
+    .current-banner { background: #ecfdf5; border-bottom: 2px solid #10b981; padding: 10px 16px; font-size: 13px; color: #065f46; flex-shrink: 0; display: none; }
+
+    /* ── STOP ITEMS ── */
+    .stops-scroll { flex: 1; overflow-y: auto; padding: 8px; -webkit-overflow-scrolling: touch; }
+    .stop-item { background: #fff; border-radius: 10px; padding: 13px 14px; margin-bottom: 8px; display: flex; align-items: flex-start; gap: 12px; cursor: pointer; border: 2px solid #e5e7eb; transition: border-color .15s; }
+    .stop-item.current { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.12); }
+    .stop-item:active { background: #fafafa; }
+    .stop-num { width: 30px; height: 30px; border-radius: 50%; background: #1a2744; color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .stop-num.current { background: #10b981; }
+    .stop-addr { flex: 1; min-width: 0; }
+    .stop-street { font-size: 14px; font-weight: 700; color: #1a2744; }
+    .stop-city { font-size: 12px; color: #6b7280; margin-top: 1px; }
+    .stop-note { font-size: 11px; color: #9ca3af; margin-top: 3px; }
+    .stop-right { flex-shrink: 0; text-align: right; }
+    .status-pill { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 12px; white-space: nowrap; display: inline-block; }
+    .stop-here { font-size: 10px; color: #10b981; font-weight: 700; margin-top: 5px; }
+    .tap-hint { font-size: 11px; color: #d1d5db; }
+
+    /* ── STATUS BOTTOM SHEET ── */
+    .sheet-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 200; display: none; align-items: flex-end; }
+    .sheet-overlay.on { display: flex; }
+    .sheet { background: #fff; border-radius: 18px 18px 0 0; width: 100%; max-height: 88vh; overflow-y: auto; padding-bottom: env(safe-area-inset-bottom, 16px); -webkit-overflow-scrolling: touch; }
+    .sheet-handle { width: 38px; height: 4px; background: #d1d5db; border-radius: 2px; margin: 14px auto 12px; }
+    .sheet-stop-num { font-size: 11px; color: #9ca3af; text-align: center; margin-bottom: 2px; letter-spacing: .5px; }
+    .sheet-addr { font-size: 16px; font-weight: 700; color: #1a2744; text-align: center; padding: 0 20px; }
+    .sheet-city { font-size: 12px; color: #6b7280; text-align: center; margin-top: 2px; padding: 0 20px; }
+    .sheet-section { padding: 14px 16px 6px; }
+    .sheet-label { font-size: 11px; font-weight: 700; color: #1a2744; letter-spacing: .5px; display: block; margin-bottom: 7px; }
+    .sheet-note { width: 100%; padding: 10px; border: 1.5px solid #e5e7eb; border-radius: 8px; font-size: 14px; font-family: Arial; resize: none; outline: none; color: #1a2744; }
+    .sheet-note:focus { border-color: #6b3fa0; }
+    .status-btn { width: 100%; padding: 14px 16px; margin-bottom: 8px; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; text-align: left; border: 2px solid transparent; transition: border-color .1s; }
+    .status-btn.selected { border-color: currentColor !important; }
+    .status-btn-clear { width: 100%; padding: 13px 16px; background: #f9fafb; border: 1.5px solid #e5e7eb; border-radius: 10px; font-size: 14px; color: #6b7280; cursor: pointer; margin-top: 2px; }
+    .status-btn-clear:active { background: #f3f4f6; }
+
+    /* ── EMPTY / LOADING ── */
+    .empty-msg { text-align: center; padding: 60px 24px; color: #9ca3af; font-size: 15px; line-height: 1.7; }
+  </style>
+</head>
+<body>
+
+<!-- ════════ LOGIN SCREEN ════════ -->
+<div class="screen active" id="screenLogin">
+  <div class="login-body">
+    <div class="login-logo">🎨</div>
+    <div class="login-title">CanvasRoute</div>
+    <div class="login-sub">Canvasser Portal</div>
+    <div class="login-form">
+      <label class="login-label" for="nameSelect">SELECT YOUR NAME</label>
+      <select class="login-select" id="nameSelect">
+        <option value="">— Select your name —</option>
+        <option>Meleah Thompson</option>
+        <option>Benjamin Chabot</option>
+        <option>Brayden Owen</option>
+      </select>
+      <button class="login-btn" onclick="doLogin()">Enter →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MY ROUTES SCREEN ════════ -->
+<div class="screen" id="screenRoutes">
+  <div class="topbar">
+    <div class="topbar-title">📂 My Routes</div>
+    <button class="topbar-btn" onclick="logout()">Sign Out</button>
+  </div>
+  <div style="padding: 12px; flex: 1;" id="routesList">
+    <div class="empty-msg">Loading…</div>
+  </div>
+</div>
+
+<!-- ════════ ROUTE DETAIL SCREEN ════════ -->
+<div class="screen" id="screenDetail">
+  <div class="topbar">
+    <button class="topbar-btn" onclick="backToRoutes()">← Back</button>
+    <div class="topbar-title" id="detailTitle"></div>
+  </div>
+  <div class="detail-progress">
+    <div class="prog-row">
+      <span id="progressLabel">0 of 0 stops completed</span>
+      <span id="progressPct">0%</span>
+    </div>
+    <div class="prog-bar"><div class="prog-fill" id="progressBar" style="width:0%;background:#6b3fa0;"></div></div>
+  </div>
+  <div class="current-banner" id="currentBanner">
+    📍 Currently on: <strong id="currentBannerText"></strong>
+  </div>
+  <div class="stops-scroll" id="stopsList">
+    <div class="empty-msg">Loading…</div>
+  </div>
+</div>
+
+<!-- ════════ STATUS BOTTOM SHEET ════════ -->
+<div class="sheet-overlay" id="statusSheet" onclick="sheetOverlayClick(event)">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-stop-num">STOP <span id="sheetStopNum"></span></div>
+    <div class="sheet-addr" id="sheetAddr"></div>
+    <div class="sheet-city" id="sheetCity"></div>
+    <div class="sheet-section">
+      <label class="sheet-label" for="sheetNote">NOTE</label>
+      <textarea class="sheet-note" id="sheetNote" rows="2" placeholder="Add a note for this stop…"></textarea>
+    </div>
+    <div style="padding: 0 16px 0;" id="statusBtns"></div>
+    <div style="padding: 6px 16px 0;">
+      <button class="status-btn-clear" onclick="commitStatus('')">✕ Clear Status</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBmRc1mkrHrjJsmu27dFPNrgocSqL_JjX0",
+  authDomain: "paintpals-canvasroute.firebaseapp.com",
+  projectId: "paintpals-canvasroute",
+  storageBucket: "paintpals-canvasroute.firebasestorage.app",
+  messagingSenderId: "32139069297",
+  appId: "1:32139069297:web:b4b0ef80b8a1b0409298d0"
+};
+
+const CANVASSERS = ['Meleah Thompson', 'Benjamin Chabot', 'Brayden Owen'];
+
+const STATUS_OPTS = [
+  { val: 'Lead',               bg: '#dcfce7', color: '#15803d' },
+  { val: 'Lead Contact Later', bg: '#ede9fe', color: '#5b21b6' },
+  { val: 'Not Home',           bg: '#fef9c3', color: '#92400e' },
+  { val: 'Not Interested',     bg: '#fee2e2', color: '#991b1b' },
+  { val: 'No Soliciting',      bg: '#fce7f3', color: '#9d174d' },
+  { val: 'Busy',               bg: '#f1f5f9', color: '#334155' },
+  { val: 'Wrong Address',      bg: '#fde8d8', color: '#c2410c' },
+  { val: 'Renting',            bg: '#e0f2fe', color: '#075985' },
+  { val: 'Recently Painted',   bg: '#fef3c7', color: '#78350f' },
+];
+
+let db;
+let currentCanvasser = null;
+let currentRoute = null;
+let routeUnsubscribe = null;
+let pickingStopIdx = null;
+
+function x(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ── LOGIN ─────────────────────────────────────────
+function doLogin() {
+  const name = document.getElementById('nameSelect').value;
+  if (!name) { alert('Please select your name.'); return; }
+  currentCanvasser = name;
+  sessionStorage.setItem('crCanvasser', name);
+  showScreen('screenRoutes');
+  loadMyRoutes();
+}
+
+function logout() {
+  if (routeUnsubscribe) { routeUnsubscribe(); routeUnsubscribe = null; }
+  currentCanvasser = null;
+  currentRoute = null;
+  sessionStorage.removeItem('crCanvasser');
+  document.getElementById('nameSelect').value = '';
+  showScreen('screenLogin');
+}
+
+// ── ROUTES LIST ───────────────────────────────────
+async function loadMyRoutes() {
+  const listEl = document.getElementById('routesList');
+  listEl.innerHTML = '<div class="empty-msg">Loading your routes…</div>';
+  try {
+    const snap = await db.collection('routes').orderBy('id', 'desc').get();
+    const myRoutes = snap.docs.map(d => d.data()).filter(r => r.canvasser === currentCanvasser);
+    renderRoutesList(myRoutes);
+  } catch(e) {
+    console.error(e);
+    listEl.innerHTML = '<div class="empty-msg" style="color:#ef4444;">⚠️ Failed to load routes.<br>Check your connection and try again.</div>';
+  }
+}
+
+function renderRoutesList(routes) {
+  const listEl = document.getElementById('routesList');
+  if (!routes.length) {
+    listEl.innerHTML = '<div class="empty-msg">📭<br><br>No routes assigned to you yet.<br>Your manager will assign routes here.</div>';
+    return;
+  }
+  listEl.innerHTML = routes.map(r => {
+    const done = (r.stops || []).filter(s => s.status).length;
+    const total = (r.stops || []).length;
+    const pct = total ? Math.round(done / total * 100) : 0;
+    const fillColor = pct === 100 ? '#10b981' : '#6b3fa0';
+    return `
+    <div class="route-card" onclick="openRoute(${r.id})">
+      <div class="route-card-name">${x(r.name)}</div>
+      <div class="route-card-meta">📅 ${x(r.date)} &nbsp;·&nbsp; 📍 ${total} stop${total !== 1 ? 's' : ''}</div>
+      <div class="prog-wrap">
+        <div class="prog-row"><span>${done}/${total} completed</span><span>${pct}%</span></div>
+        <div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:${fillColor};"></div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── ROUTE DETAIL ─────────────────────────────────
+function openRoute(routeId) {
+  if (routeUnsubscribe) { routeUnsubscribe(); routeUnsubscribe = null; }
+  showScreen('screenDetail');
+  document.getElementById('stopsList').innerHTML = '<div class="empty-msg">Loading…</div>';
+
+  // Live listener — updates in real-time if admin or other canvasser changes the route
+  routeUnsubscribe = db.collection('routes').doc(String(routeId)).onSnapshot(doc => {
+    if (!doc.exists) { alert('Route not found.'); backToRoutes(); return; }
+    currentRoute = doc.data();
+    document.getElementById('detailTitle').textContent = currentRoute.name;
+    renderDetailStops();
+  }, err => {
+    console.error('Route snapshot error:', err);
+  });
+}
+
+function backToRoutes() {
+  if (routeUnsubscribe) { routeUnsubscribe(); routeUnsubscribe = null; }
+  currentRoute = null;
+  showScreen('screenRoutes');
+  loadMyRoutes();
+}
+
+function renderDetailStops() {
+  if (!currentRoute) return;
+  const stops = currentRoute.stops || [];
+  const done = stops.filter(s => s.status).length;
+  const total = stops.length;
+  const pct = total ? Math.round(done / total * 100) : 0;
+
+  document.getElementById('progressLabel').textContent = `${done} of ${total} stops completed`;
+  document.getElementById('progressPct').textContent = `${pct}%`;
+  document.getElementById('progressBar').style.width = `${pct}%`;
+  document.getElementById('progressBar').style.background = pct === 100 ? '#10b981' : '#6b3fa0';
+
+  // Current stop banner
+  const liveIdx = currentRoute.liveStopIdx;
+  const banner = document.getElementById('currentBanner');
+  if (liveIdx !== undefined && liveIdx !== null && stops[liveIdx]) {
+    document.getElementById('currentBannerText').textContent = `Stop ${liveIdx + 1} — ${stops[liveIdx].street}`;
+    banner.style.display = 'block';
+  } else {
+    banner.style.display = 'none';
+  }
+
+  const listEl = document.getElementById('stopsList');
+  if (!stops.length) {
+    listEl.innerHTML = '<div class="empty-msg">No stops in this route.</div>';
+    return;
+  }
+
+  listEl.innerHTML = stops.map((s, i) => {
+    const isCurrent = currentRoute.liveStopIdx === i;
+    const opt = STATUS_OPTS.find(o => o.val === s.status);
+    return `
+    <div class="stop-item${isCurrent ? ' current' : ''}" onclick="tappedStop(${i})">
+      <div class="stop-num${isCurrent ? ' current' : ''}">${i + 1}</div>
+      <div class="stop-addr">
+        <div class="stop-street">${x(s.street)}</div>
+        <div class="stop-city">${x(s.city)}</div>
+        ${s.note ? `<div class="stop-note">📝 ${x(s.note)}</div>` : ''}
+      </div>
+      <div class="stop-right">
+        ${opt
+          ? `<span class="status-pill" style="background:${opt.bg};color:${opt.color};">${x(s.status)}</span>`
+          : `<span class="tap-hint">tap to set</span>`}
+        ${isCurrent ? `<div class="stop-here">● HERE</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── STOP TAP ─────────────────────────────────────
+function tappedStop(idx) {
+  if (!currentRoute) return;
+
+  // Mark as current stop
+  const stop = (currentRoute.stops || [])[idx];
+  db.collection('routes').doc(String(currentRoute.id))
+    .update({ liveStopIdx: idx })
+    .catch(e => console.warn('liveStopIdx update failed:', e));
+
+  // Write to liveTracking so admin can see it in real-time
+  db.collection('liveTracking').doc(currentCanvasser).set({
+    canvasser: currentCanvasser,
+    routeId: currentRoute.id,
+    routeName: currentRoute.name,
+    stopIdx: idx,
+    stopAddr: stop ? stop.street : '',
+    updatedAt: new Date().toISOString()
+  }).catch(e => console.warn('liveTracking write failed:', e));
+
+  openStatusPicker(idx);
+}
+
+// ── STATUS PICKER ─────────────────────────────────
+function openStatusPicker(idx) {
+  pickingStopIdx = idx;
+  const stop = (currentRoute.stops || [])[idx];
+  if (!stop) return;
+
+  document.getElementById('sheetStopNum').textContent = idx + 1;
+  document.getElementById('sheetAddr').textContent = stop.street;
+  document.getElementById('sheetCity').textContent = stop.city;
+  document.getElementById('sheetNote').value = stop.note || '';
+
+  const btnsEl = document.getElementById('statusBtns');
+  btnsEl.innerHTML = STATUS_OPTS.map(o => {
+    const isSelected = stop.status === o.val;
+    return `<button
+      class="status-btn${isSelected ? ' selected' : ''}"
+      style="background:${o.bg};color:${o.color};${isSelected ? `border-color:${o.color};` : ''}"
+      onclick="commitStatus('${o.val.replace(/'/g, "\\'")}')"
+    >${isSelected ? '✓ ' : ''}${x(o.val)}</button>`;
+  }).join('');
+
+  document.getElementById('statusSheet').classList.add('on');
+  // Scroll list to this stop
+  const stopEl = document.querySelector(`#stopsList .stop-item:nth-child(${idx + 1})`);
+  if (stopEl) stopEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function sheetOverlayClick(e) {
+  if (e.target === e.currentTarget) closeStatusPicker();
+}
+
+function closeStatusPicker() {
+  document.getElementById('statusSheet').classList.remove('on');
+  pickingStopIdx = null;
+}
+
+async function commitStatus(val) {
+  if (!currentRoute || pickingStopIdx === null) return;
+  const idx = pickingStopIdx;
+  const note = document.getElementById('sheetNote').value.trim();
+  closeStatusPicker();
+
+  const stops = JSON.parse(JSON.stringify(currentRoute.stops || []));
+  if (!stops[idx]) return;
+  stops[idx].status = val;
+  stops[idx].note = note;
+
+  try {
+    await db.collection('routes').doc(String(currentRoute.id)).update({ stops });
+  } catch(e) {
+    alert('Failed to save status. Check your connection and try again.');
+    console.error(e);
+  }
+  // onSnapshot will auto-refresh the stop list
+}
+</script>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+  firebase.initializeApp(FIREBASE_CONFIG);
+  db = firebase.firestore();
+  db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+
+  // Auto-login from session storage
+  const savedName = sessionStorage.getItem('crCanvasser');
+  if (savedName && CANVASSERS.includes(savedName)) {
+    currentCanvasser = savedName;
+    document.getElementById('nameSelect').value = savedName;
+    showScreen('screenRoutes');
+    loadMyRoutes();
+  }
+</script>
+</body>
+</html>
