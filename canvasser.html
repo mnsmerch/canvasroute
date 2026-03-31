@@ -190,13 +190,36 @@
     <div class="sheet-stop-num">STOP <span id="sheetStopNum"></span></div>
     <div class="sheet-addr" id="sheetAddr"></div>
     <div class="sheet-city" id="sheetCity"></div>
-    <div class="sheet-section">
-      <label class="sheet-label" for="sheetNote">NOTE</label>
-      <textarea class="sheet-note" id="sheetNote" rows="2" placeholder="Add a note for this stop…"></textarea>
+
+    <!-- VIEW 1: Status selection -->
+    <div id="statusView">
+      <div class="sheet-section">
+        <label class="sheet-label" for="sheetNote">NOTE</label>
+        <textarea class="sheet-note" id="sheetNote" rows="2" placeholder="Add a note for this stop…"></textarea>
+      </div>
+      <div style="padding: 0 16px 0;" id="statusBtns"></div>
+      <div style="padding: 6px 16px 0;">
+        <button class="status-btn-clear" onclick="commitStatus('')">✕ Clear Status</button>
+      </div>
     </div>
-    <div style="padding: 0 16px 0;" id="statusBtns"></div>
-    <div style="padding: 6px 16px 0;">
-      <button class="status-btn-clear" onclick="commitStatus('')">✕ Clear Status</button>
+
+    <!-- VIEW 2: Lead capture form -->
+    <div id="leadFormView" style="display:none;">
+      <div class="sheet-section">
+        <div id="leadFormTitle" style="font-size:16px;font-weight:700;color:#1a2744;margin-bottom:16px;"></div>
+        <label class="sheet-label">NAME</label>
+        <input class="sheet-note" type="text" id="leadName" placeholder="Full name" autocomplete="off" style="display:block;padding:10px;margin-bottom:12px;">
+        <label class="sheet-label">PHONE NUMBER</label>
+        <input class="sheet-note" type="tel" id="leadPhone" placeholder="Phone number" style="display:block;padding:10px;margin-bottom:12px;">
+        <div id="contactDateWrap" style="display:none;">
+          <label class="sheet-label">FOLLOW-UP DATE</label>
+          <input class="sheet-note" type="date" id="leadContactDate" style="display:block;padding:10px;margin-bottom:12px;">
+        </div>
+      </div>
+      <div style="padding: 0 16px 16px;">
+        <button id="submitLeadBtn" onclick="submitLead()" style="width:100%;padding:15px;background:#15803d;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;">🏆 Submit Lead</button>
+        <button onclick="backToStatusPicker()" style="width:100%;padding:13px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;color:#6b7280;cursor:pointer;">← Back</button>
+      </div>
     </div>
   </div>
 </div>
@@ -419,6 +442,9 @@ function tappedStop(idx) {
 }
 
 // ── STATUS PICKER ─────────────────────────────────
+const LEAD_WEBHOOK = 'https://services.leadconnectorhq.com/hooks/nPPG7BKPRH9771vRMDZ6/webhook-trigger/d34aa2e5-e338-45ff-86eb-cc2e75cf15ab';
+let pendingLeadStatus = null;
+
 function openStatusPicker(idx) {
   pickingStopIdx = idx;
   const stop = (currentRoute.stops || [])[idx];
@@ -429,20 +455,47 @@ function openStatusPicker(idx) {
   document.getElementById('sheetCity').textContent = stop.city;
   document.getElementById('sheetNote').value = stop.note || '';
 
+  // Always start on status view
+  document.getElementById('statusView').style.display = 'block';
+  document.getElementById('leadFormView').style.display = 'none';
+  pendingLeadStatus = null;
+
   const btnsEl = document.getElementById('statusBtns');
   btnsEl.innerHTML = STATUS_OPTS.map(o => {
     const isSelected = stop.status === o.val;
+    const isLead = o.val === 'Lead' || o.val === 'Lead Contact Later';
+    const handler = isLead
+      ? `showLeadForm('${o.val.replace(/'/g, "\\'")}')`
+      : `commitStatus('${o.val.replace(/'/g, "\\'")}')`;
     return `<button
       class="status-btn${isSelected ? ' selected' : ''}"
       style="background:${o.bg};color:${o.color};${isSelected ? `border-color:${o.color};` : ''}"
-      onclick="commitStatus('${o.val.replace(/'/g, "\\'")}')"
+      onclick="${handler}"
     >${isSelected ? '✓ ' : ''}${x(o.val)}</button>`;
   }).join('');
 
   document.getElementById('statusSheet').classList.add('on');
-  // Scroll list to this stop
   const stopEl = document.querySelector(`#stopsList .stop-item:nth-child(${idx + 1})`);
   if (stopEl) stopEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function showLeadForm(statusVal) {
+  pendingLeadStatus = statusVal;
+  document.getElementById('statusView').style.display = 'none';
+  document.getElementById('leadFormView').style.display = 'block';
+  document.getElementById('leadFormTitle').textContent = statusVal === 'Lead' ? '🏆 Lead Details' : '📅 Lead — Contact Later';
+  document.getElementById('leadName').value = '';
+  document.getElementById('leadPhone').value = '';
+  const dateWrap = document.getElementById('contactDateWrap');
+  dateWrap.style.display = statusVal === 'Lead Contact Later' ? 'block' : 'none';
+  document.getElementById('leadContactDate').value = '';
+  setTimeout(() => document.getElementById('leadName').focus(), 80);
+}
+
+function backToStatusPicker() {
+  pendingLeadStatus = null;
+  document.getElementById('statusView').style.display = 'block';
+  document.getElementById('leadFormView').style.display = 'none';
 }
 
 function sheetOverlayClick(e) {
@@ -451,7 +504,60 @@ function sheetOverlayClick(e) {
 
 function closeStatusPicker() {
   document.getElementById('statusSheet').classList.remove('on');
+  document.getElementById('statusView').style.display = 'block';
+  document.getElementById('leadFormView').style.display = 'none';
+  pendingLeadStatus = null;
   pickingStopIdx = null;
+}
+
+async function submitLead() {
+  const name = document.getElementById('leadName').value.trim();
+  const phone = document.getElementById('leadPhone').value.trim();
+  const note = document.getElementById('sheetNote').value.trim();
+  const contactDate = document.getElementById('leadContactDate').value;
+
+  if (!name) { document.getElementById('leadName').focus(); alert('Please enter the lead\'s name.'); return; }
+  if (!phone) { document.getElementById('leadPhone').focus(); alert('Please enter the phone number.'); return; }
+  if (pendingLeadStatus === 'Lead Contact Later' && !contactDate) {
+    document.getElementById('leadContactDate').focus();
+    alert('Please select a follow-up date.');
+    return;
+  }
+
+  const stop = (currentRoute.stops || [])[pickingStopIdx];
+  const address = stop ? (stop.fullAddress || `${stop.street}, ${stop.city}`) : '';
+
+  const payload = {
+    status: pendingLeadStatus,
+    address,
+    name,
+    phone,
+    notes: note,
+    canvasser: currentCanvasser,
+    ...(pendingLeadStatus === 'Lead Contact Later' ? { contactDate } : {})
+  };
+
+  const btn = document.getElementById('submitLeadBtn');
+  btn.textContent = 'Submitting…';
+  btn.disabled = true;
+
+  try {
+    await fetch(LEAD_WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch(e) {
+    console.error('Webhook error:', e);
+    // Don't block — still save the status below
+  }
+
+  // Save the status to the route
+  const statusToSave = pendingLeadStatus;
+  await commitStatus(statusToSave); // closes sheet, saves to Firestore
+
+  btn.textContent = '🏆 Submit Lead';
+  btn.disabled = false;
 }
 
 async function commitStatus(val) {
