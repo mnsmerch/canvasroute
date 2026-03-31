@@ -525,11 +525,18 @@ async function submitLead() {
   }
 
   const stop = (currentRoute.stops || [])[pickingStopIdx];
-  const address = stop ? (stop.fullAddress || `${stop.street}, ${stop.city}`) : '';
+  const cityParts = (stop ? stop.city || '' : '').split(',').map(p => p.trim());
+  const street   = stop ? stop.street || '' : '';
+  const city     = cityParts[0] || '';
+  const state    = cityParts[1] || '';
+  const zip      = cityParts[2] || '';
 
   const payload = {
     status: pendingLeadStatus,
-    address,
+    street,
+    city,
+    state,
+    zip,
     name,
     phone,
     notes: note,
