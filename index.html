@@ -1685,6 +1685,36 @@ function confirmSplit() {
 "${newName}" has ${remainingStops.length} stops ready for the next session.`);
 }
 
+// ── FORCE RELOAD FROM CLOUD ──────────────────────
+async function forceReloadFromCloud() {
+  if (!db) { alert('Not connected to cloud.'); return; }
+  const btn = event.target;
+  btn.textContent = '☁ Loading…';
+  btn.disabled = true;
+  try {
+    const snap = await db.collection('routes').orderBy('id', 'desc').get();
+    const loaded = snap.docs.map(d => d.data());
+    if (loaded.length === 0) {
+      btn.textContent = '☁ Reload from Cloud';
+      btn.disabled = false;
+      alert('No routes found in the cloud.');
+      return;
+    }
+    routesCache = loaded;
+    cloudLoadedSuccessfully = true;
+    try { localStorage.setItem('canvasroute_backup', JSON.stringify(routesCache)); } catch(_) {}
+    loadPastMarkersFromStorage();
+    renderSavedRoutes();
+    btn.textContent = '✓ Reloaded';
+    setTimeout(() => { btn.textContent = '☁ Reload from Cloud'; btn.disabled = false; }, 2000);
+  } catch(e) {
+    console.error('Force reload failed:', e);
+    btn.textContent = '☁ Reload from Cloud';
+    btn.disabled = false;
+    alert('Reload failed. Check your internet connection and try again.');
+  }
+}
+
 // ── BACKUP EXPORT / IMPORT ───────────────────────
 function exportBackup() {
   const routes = getSavedRoutes();
