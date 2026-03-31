@@ -309,6 +309,9 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
     <div class="mb" id="mbSaved"></div>
     <div class="mf">
       <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeSavedRoutes()">Close</button>
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="exportBackup()">⬇ Export Backup</button>
+      <label class="btn bh" style="color:var(--ink);border-color:var(--rule);cursor:pointer;">⬆ Import Backup<input type="file" accept=".json" style="display:none;" onchange="importBackup(this)"></label>
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="forceReloadFromCloud()">☁ Reload from Cloud</button>
     </div>
   </div>
 </div>
