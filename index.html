@@ -42,9 +42,14 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 .hint { padding: 7px 12px; background: #fffbe6; border-bottom: 1px solid #f0e090; font-size: 11px; color: #7a6800; line-height: 1.5; flex-shrink: 0; }
 #list { flex: 1; overflow-y: auto; padding: 6px; }
 .emp { text-align: center; padding: 28px 14px; color: var(--mid); font-size: 12px; line-height: 1.6; }
-.itm { display: flex; align-items: flex-start; gap: 7px; padding: 7px 8px; background: #fff; border: 1px solid var(--rule); border-radius: 4px; margin-bottom: 4px; cursor: pointer; transition: border-color .15s; }
+.itm { display: flex; align-items: flex-start; gap: 7px; padding: 7px 8px; background: #fff; border: 1px solid var(--rule); border-radius: 4px; margin-bottom: 4px; cursor: pointer; transition: border-color .15s, opacity .15s; }
 .itm:hover { border-color: var(--orange); }
 .itm.active { border-color: var(--orange); background: #fff8f3; }
+.itm.dragging { opacity: 0.35; }
+.itm.drag-over { border-top: 2px solid var(--orange); }
+.drag-handle { cursor: grab; color: #bbb; font-size: 15px; flex-shrink: 0; padding: 1px 1px; user-select: none; line-height: 1; margin-top: 2px; }
+.drag-handle:hover { color: var(--orange); }
+.drag-handle:active { cursor: grabbing; }
 .sn { width: 20px; height: 20px; background: var(--navy); color: #fff; border-radius: 50%; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
 .ad { flex: 1; font-size: 11px; line-height: 1.4; }
 .ad .st { font-weight: 700; }
@@ -487,6 +492,8 @@ function hideSync() {
 
 let map, geocoder, polyline = null;
 let stops = [], addMode = true, idc = 0;
+let dragSrcId = null, dragAllowed = false;
+document.addEventListener('mouseup', () => { dragAllowed = false; });
 let currentTab = 'sheet';
 let pastMarkers = [];   // gray markers for previously saved routes
 let printStopsRef = []; // used when reprinting a saved route
@@ -622,7 +629,8 @@ function renderList() {
   const l = document.getElementById('list');
   if (!stops.length) { l.innerHTML = '<div class="emp">🗺️<br><br>No stops yet.<br>Click the map to begin.</div>'; return; }
   l.innerHTML = stops.map((s, i) => `
-    <div class="itm" id="i${s.id}">
+    <div class="itm" id="i${s.id}" draggable="true">
+      <div class="drag-handle" onmousedown="dragAllowed=true" title="Drag to reorder">⠿</div>
       <div class="sn" onclick="highlight(${s.id})" style="cursor:pointer;flex-shrink:0;">${i + 1}</div>
       <div class="ad" style="flex:1;min-width:0;">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;" onclick="highlight(${s.id})" style="cursor:pointer;">
@@ -632,10 +640,43 @@ function renderList() {
           </div>
         </div>
         <div class="note-label">NOTE</div>
-        <textarea class="note-box" rows="2" placeholder="Add a note for this stop…" onclick="event.stopPropagation()" oninput="saveNote(${s.id}, this.value)">${x(s.note||'')}</textarea>
+        <textarea class="note-box" rows="2" placeholder="Add a note for this stop…" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" oninput="saveNote(${s.id}, this.value)">${x(s.note||'')}</textarea>
       </div>
       <button class="dl" onclick="event.stopPropagation();del(${s.id})">×</button>
     </div>`).join('');
+  attachDragListeners();
+}
+
+function attachDragListeners() {
+  document.querySelectorAll('#list .itm').forEach(item => {
+    const id = parseInt(item.id.slice(1));
+    item.addEventListener('dragstart', e => {
+      if (!dragAllowed) { e.preventDefault(); return; }
+      dragSrcId = id;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => item.classList.add('dragging'), 0);
+    });
+    item.addEventListener('dragend', () => {
+      dragSrcId = null; dragAllowed = false;
+      document.querySelectorAll('#list .itm').forEach(i => i.classList.remove('dragging', 'drag-over'));
+    });
+    item.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      document.querySelectorAll('#list .itm').forEach(i => i.classList.remove('drag-over'));
+      item.classList.add('drag-over');
+    });
+    item.addEventListener('drop', e => {
+      e.preventDefault();
+      if (dragSrcId === null || dragSrcId === id) return;
+      const fromIdx = stops.findIndex(s => s.id === dragSrcId);
+      const toIdx   = stops.findIndex(s => s.id === id);
+      if (fromIdx < 0 || toIdx < 0) return;
+      const [moved] = stops.splice(fromIdx, 1);
+      stops.splice(toIdx, 0, moved);
+      refreshIcons(); redrawLine(); renderList();
+    });
+  });
 }
 
 function saveNote(id, val) {
