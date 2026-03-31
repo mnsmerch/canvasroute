@@ -261,6 +261,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
       <div id="list"><div class="emp">🗺️<br><br>Search for a neighborhood above,<br>then click the map to add stops.</div></div>
       <div class="sbf">
         <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="exportCSV()">⬇ CSV</button>
+        <label class="btn bh" style="color:var(--ink);border-color:var(--rule);cursor:pointer;text-align:center;">📋 Import CSV<input type="file" accept=".csv,.txt" style="display:none;" onchange="importCSVRoute(this)"></label>
         <button class="btn bpurple" onclick="openSaveDialog()">💾 Save</button>
         <button class="btn bg" onclick="openModal()">🖨 Print</button>
       </div>
@@ -312,6 +313,23 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
       <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="exportBackup()">⬇ Export Backup</button>
       <label class="btn bh" style="color:var(--ink);border-color:var(--rule);cursor:pointer;">⬆ Import Backup<input type="file" accept=".json" style="display:none;" onchange="importBackup(this)"></label>
       <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="forceReloadFromCloud()">☁ Reload from Cloud</button>
+    </div>
+  </div>
+</div>
+
+<!-- CSV IMPORT PROGRESS MODAL -->
+<div class="ov" id="ovCsvImport">
+  <div class="mod mod-sm">
+    <div class="mh"><span>📋 Import CSV Route</span></div>
+    <div style="padding:20px 20px 8px;">
+      <div id="csvImportStatus" style="font-size:14px;color:var(--ink);margin-bottom:12px;">Reading file…</div>
+      <div style="background:#e5e7eb;border-radius:6px;height:10px;overflow:hidden;">
+        <div id="csvImportBar" style="height:100%;width:0%;background:#6b3fa0;transition:width .2s;"></div>
+      </div>
+      <div id="csvImportDetail" style="font-size:11px;color:#6b7280;margin-top:8px;"></div>
+    </div>
+    <div class="mf">
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" id="csvImportCloseBtn" onclick="closeCsvImportModal()" disabled>Close</button>
     </div>
   </div>
 </div>
@@ -1716,6 +1734,133 @@ async function forceReloadFromCloud() {
     btn.disabled = false;
     alert('Reload failed. Check your internet connection and try again.');
   }
+}
+
+// ── CSV ROUTE IMPORT ─────────────────────────────
+function closeCsvImportModal() {
+  document.getElementById('ovCsvImport').classList.remove('on');
+}
+
+async function importCSVRoute(input) {
+  const file = input.files[0];
+  input.value = ''; // reset so same file can be re-selected
+  if (!file) return;
+
+  // Parse CSV text
+  const text = await file.text();
+  const rows = text.split(/\r?\n/).map(r => r.trim()).filter(Boolean);
+  if (!rows.length) { alert('The CSV file appears to be empty.'); return; }
+
+  // Detect header row and find the address column
+  // Strategy: look for a column whose header contains "address" or whose first data value looks like an address
+  const firstRow = rows[0].split(',').map(c => c.replace(/^"|"$/g, '').trim());
+  let addrColIdx = 0;
+  const headerIdx = firstRow.findIndex(c => /address|street|location/i.test(c));
+  let dataRows;
+  if (headerIdx >= 0) {
+    addrColIdx = headerIdx;
+    dataRows = rows.slice(1);
+  } else {
+    // No recognized header — treat first column as addresses, include all rows
+    dataRows = rows;
+  }
+
+  const addresses = dataRows
+    .map(r => {
+      const cols = r.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+      return cols[addrColIdx] || '';
+    })
+    .filter(a => a.length > 0);
+
+  if (!addresses.length) { alert('No addresses found in the CSV. Make sure addresses are in the first column (or a column labeled "address").'); return; }
+
+  // Confirm clear if stops already exist
+  if (stops.length > 0) {
+    if (!confirm(`This will clear your current ${stops.length} stop(s) and build a new route from ${addresses.length} CSV addresses. Continue?`)) return;
+    stops.forEach(s => s.marker.setMap(null)); stops = [];
+    if (polyline) { polyline.setMap(null); polyline = null; }
+    renderList();
+  }
+
+  // Show progress modal
+  const modal = document.getElementById('ovCsvImport');
+  const statusEl = document.getElementById('csvImportStatus');
+  const barEl = document.getElementById('csvImportBar');
+  const detailEl = document.getElementById('csvImportDetail');
+  const closeBtn = document.getElementById('csvImportCloseBtn');
+  statusEl.textContent = `Geocoding ${addresses.length} addresses…`;
+  barEl.style.width = '0%';
+  detailEl.textContent = '';
+  closeBtn.disabled = true;
+  modal.classList.add('on');
+
+  let successCount = 0, failCount = 0, failedAddresses = [];
+
+  for (let i = 0; i < addresses.length; i++) {
+    const addr = addresses[i];
+    statusEl.textContent = `Geocoding ${i + 1} of ${addresses.length}…`;
+    barEl.style.width = `${Math.round(((i + 1) / addresses.length) * 100)}%`;
+    detailEl.textContent = addr;
+
+    await new Promise(resolve => {
+      geocoder.geocode({ address: addr }, (results, status) => {
+        if (status === 'OK' && results[0]) {
+          const latLng = results[0].geometry.location;
+          const id = ++idc;
+          const marker = new google.maps.Marker({
+            position: latLng, map,
+            icon: mkIcon(stops.length + 1, stops.length === 0 ? 'first' : 'mid'),
+            zIndex: 100 + stops.length,
+            draggable: true,
+            cursor: 'grab'
+          });
+          marker.addListener('click', () => highlight(id));
+          marker.addListener('dragstart', () => { marker.setOpacity(0.6); });
+          marker.addListener('dragend', (e) => {
+            marker.setOpacity(1);
+            const stop = stops.find(s => s.id === id);
+            if (!stop) return;
+            stop.pos = e.latLng;
+            stop.street = 'Loading…'; stop.city = ''; stop.fullAddress = '';
+            redrawLine(); renderList(); reverseGeocode(e.latLng, id);
+          });
+          const comps = results[0].address_components;
+          const get = t => (comps.find(c => c.types.includes(t)) || {}).short_name || '';
+          const getL = t => (comps.find(c => c.types.includes(t)) || {}).long_name || '';
+          const street = [get('street_number'), getL('route')].filter(Boolean).join(' ') || addr;
+          const city = [getL('locality') || getL('sublocality') || '', get('administrative_area_level_1'), get('postal_code')].filter(Boolean).join(', ');
+          stops.push({ id, pos: latLng, street, city, fullAddress: results[0].formatted_address, note: '', marker });
+          refreshIcons(); redrawLine(); renderList();
+          successCount++;
+        } else {
+          failCount++;
+          failedAddresses.push(addr);
+          console.warn(`CSV geocode failed for "${addr}": ${status}`);
+        }
+        resolve();
+      });
+    });
+
+    // Small delay between geocode calls to avoid rate limiting
+    if (i < addresses.length - 1) await new Promise(r => setTimeout(r, 120));
+  }
+
+  // Fit map to the new stops
+  if (stops.length > 0) {
+    const bounds = new google.maps.LatLngBounds();
+    stops.forEach(s => bounds.extend(s.pos));
+    map.fitBounds(bounds);
+  }
+
+  barEl.style.width = '100%';
+  if (failCount === 0) {
+    statusEl.textContent = `✓ Done! ${successCount} stop${successCount !== 1 ? 's' : ''} added to your route.`;
+    detailEl.textContent = '';
+  } else {
+    statusEl.textContent = `Done — ${successCount} added, ${failCount} could not be found.`;
+    detailEl.textContent = 'Not found: ' + failedAddresses.join('; ');
+  }
+  closeBtn.disabled = false;
 }
 
 // ── BACKUP EXPORT / IMPORT ───────────────────────
