@@ -1079,7 +1079,11 @@ function renderSavedRoutes() {
           <div class="sr-meta" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <span>📅 ${r.date}</span>
             <button onclick="editRouteDate(${r.id})" style="background:none;border:1px solid #d4cfc5;border-radius:3px;font-size:10px;padding:1px 6px;cursor:pointer;color:#6b7280;" title="Change date">✏️ Date</button>
-            <span>&nbsp;·&nbsp; 👤 ${x(r.canvasser||'Unassigned')} &nbsp;·&nbsp; 📍 ${r.stopCount} stop${r.stopCount !== 1 ? 's' : ''}</span>
+            <span>&nbsp;·&nbsp; 👤 <select onchange="reassignCanvasser(${r.id},this.value)" onclick="event.stopPropagation()" style="font-size:11px;border:1px solid #d4cfc5;border-radius:3px;padding:1px 4px;color:var(--ink);background:#fff;cursor:pointer;">
+              <option value="Meleah Thompson"${r.canvasser==='Meleah Thompson'?' selected':''}>Meleah Thompson</option>
+              <option value="Benjamin Chabot"${r.canvasser==='Benjamin Chabot'?' selected':''}>Benjamin Chabot</option>
+              <option value="Brayden Owen"${r.canvasser==='Brayden Owen'?' selected':''}>Brayden Owen</option>
+            </select> &nbsp;·&nbsp; 📍 ${r.stopCount} stop${r.stopCount !== 1 ? 's' : ''}</span>
           </div>
           <div class="sr-meta" style="margin-top:3px;">
             <span style="color:#4b5563;">${r.stops.slice(0,2).map(s => s.street).join(', ')}${r.stops.length > 2 ? ` + ${r.stops.length - 2} more` : ''}</span>
@@ -1247,6 +1251,15 @@ function renameRoute(id) {
   const newName = prompt('Enter new route name:', route.name);
   if (!newName || !newName.trim()) return;
   route.name = newName.trim();
+  putSavedRoutes(routes);
+  renderSavedRoutes();
+}
+
+function reassignCanvasser(id, newCanvasser) {
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === id);
+  if (!route || !newCanvasser) return;
+  route.canvasser = newCanvasser;
   putSavedRoutes(routes);
   renderSavedRoutes();
 }
