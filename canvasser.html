@@ -81,10 +81,9 @@
     /* ── PAINT DETAIL VIEW ── */
     .paint-toggle-btn { width: 100%; padding: 15px 16px; margin-bottom: 8px; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; text-align: left; border: 2px solid #e5e7eb; background: #f9fafb; color: #374151; transition: all .12s; }
     .paint-toggle-btn.selected { background: #fef3c7; border-color: #d97706; color: #92400e; }
-    .paint-dir-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 0 4px; }
+    .paint-dir-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 0 0 4px; }
     .cdir-btn { padding: 14px 4px; border: 2px solid #e5e7eb; border-radius: 10px; background: #f9fafb; color: #374151; font-size: 14px; font-weight: 700; cursor: pointer; text-align: center; transition: all .12s; }
     .cdir-btn.active { background: #d97706; border-color: #d97706; color: #fff; }
-    .cdir-none { font-size: 12px; color: #9ca3af; }
 
     /* ── EMPTY / LOADING ── */
     .empty-msg { text-align: center; padding: 60px 24px; color: #9ca3af; font-size: 15px; line-height: 1.7; }
@@ -218,17 +217,13 @@
         <label class="sheet-label">PAINT ISSUES (select all that apply)</label>
         <button class="paint-toggle-btn" id="btnFadedPaint" onclick="togglePaintIssue('Faded Paint')">Faded Paint</button>
         <button class="paint-toggle-btn" id="btnPeelingPaint" onclick="togglePaintIssue('Peeling Paint')">Peeling Paint</button>
-        <label class="sheet-label" style="margin-top:14px;display:block;">WHICH SIDE OF THE HOUSE?</label>
+        <button class="paint-toggle-btn" id="btnChippedPaint" onclick="togglePaintIssue('Chipped Paint')">Chipped Paint</button>
+        <label class="sheet-label" style="margin-top:14px;display:block;">WHICH PART OF THE HOUSE?</label>
         <div class="paint-dir-grid">
-          <button class="cdir-btn" data-dir="NW" onclick="setPaintDirC('NW')">NW</button>
-          <button class="cdir-btn" data-dir="N"  onclick="setPaintDirC('N')">N</button>
-          <button class="cdir-btn" data-dir="NE" onclick="setPaintDirC('NE')">NE</button>
-          <button class="cdir-btn" data-dir="W"  onclick="setPaintDirC('W')">W</button>
-          <button class="cdir-btn cdir-none" data-dir="" onclick="setPaintDirC('')">None</button>
-          <button class="cdir-btn" data-dir="E"  onclick="setPaintDirC('E')">E</button>
-          <button class="cdir-btn" data-dir="SW" onclick="setPaintDirC('SW')">SW</button>
-          <button class="cdir-btn" data-dir="S"  onclick="setPaintDirC('S')">S</button>
-          <button class="cdir-btn" data-dir="SE" onclick="setPaintDirC('SE')">SE</button>
+          <button class="cdir-btn" data-dir="Front"   onclick="setPaintDirC('Front')">Front</button>
+          <button class="cdir-btn" data-dir="Side"    onclick="setPaintDirC('Side')">Side</button>
+          <button class="cdir-btn" data-dir="Back"    onclick="setPaintDirC('Back')">Back</button>
+          <button class="cdir-btn" data-dir="Garage"  onclick="setPaintDirC('Garage')">Garage</button>
         </div>
       </div>
       <div style="padding: 0 16px 16px; display:flex; flex-direction:column; gap:8px;">
@@ -670,13 +665,14 @@ function showPaintForm(sheetName) {
   _paintDir = '';
   document.getElementById('btnFadedPaint').classList.remove('selected');
   document.getElementById('btnPeelingPaint').classList.remove('selected');
+  document.getElementById('btnChippedPaint').classList.remove('selected');
   document.querySelectorAll('.cdir-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('statusView').style.display = 'none';
   document.getElementById('paintDetailView').style.display = 'block';
 }
 
 function togglePaintIssue(issue) {
-  const id = issue === 'Faded Paint' ? 'btnFadedPaint' : 'btnPeelingPaint';
+  const id = issue === 'Faded Paint' ? 'btnFadedPaint' : issue === 'Peeling Paint' ? 'btnPeelingPaint' : 'btnChippedPaint';
   const btn = document.getElementById(id);
   if (_paintIssues.includes(issue)) {
     _paintIssues = _paintIssues.filter(i => i !== issue);

@@ -187,7 +187,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 .paint-issues label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
 .paint-issues input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color: #d97706; }
 .paint-section-label { font-size: 11px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: .5px; padding: 12px 20px 6px; }
-.paint-dir-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; padding: 0 20px 16px; }
+.paint-dir-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 6px; padding: 0 20px 16px; }
 .paint-dir-btn { padding: 7px 4px; border: 1.5px solid #d1d5db; border-radius: 5px; background: #f9fafb; color: #374151; font-size: 12px; font-weight: 700; cursor: pointer; text-align: center; transition: all .12s; }
 .paint-dir-btn:hover { background: #fef9c3; border-color: #ca8a04; }
 .paint-dir-btn.active { background: #d97706; border-color: #d97706; color: #fff; }
@@ -474,18 +474,14 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
     <div class="paint-issues">
       <label><input type="checkbox" id="pi_Faded_Paint"> Faded Paint</label>
       <label><input type="checkbox" id="pi_Peeling_Paint"> Peeling Paint</label>
+      <label><input type="checkbox" id="pi_Chipped_Paint"> Chipped Paint</label>
     </div>
-    <div class="paint-section-label">Which Side of the House?</div>
+    <div class="paint-section-label">Which Part of the House?</div>
     <div class="paint-dir-grid">
-      <button class="paint-dir-btn" data-dir="NW" onclick="setPaintDir('NW')">NW</button>
-      <button class="paint-dir-btn" data-dir="N"  onclick="setPaintDir('N')">N</button>
-      <button class="paint-dir-btn" data-dir="NE" onclick="setPaintDir('NE')">NE</button>
-      <button class="paint-dir-btn" data-dir="W"  onclick="setPaintDir('W')">W</button>
-      <button class="paint-dir-btn" data-dir=""   onclick="setPaintDir('')" style="font-size:10px;color:#9ca3af;">None</button>
-      <button class="paint-dir-btn" data-dir="E"  onclick="setPaintDir('E')">E</button>
-      <button class="paint-dir-btn" data-dir="SW" onclick="setPaintDir('SW')">SW</button>
-      <button class="paint-dir-btn" data-dir="S"  onclick="setPaintDir('S')">S</button>
-      <button class="paint-dir-btn" data-dir="SE" onclick="setPaintDir('SE')">SE</button>
+      <button class="paint-dir-btn" data-dir="Front"  onclick="setPaintDir('Front')">Front</button>
+      <button class="paint-dir-btn" data-dir="Side"   onclick="setPaintDir('Side')">Side</button>
+      <button class="paint-dir-btn" data-dir="Back"   onclick="setPaintDir('Back')">Back</button>
+      <button class="paint-dir-btn" data-dir="Garage" onclick="setPaintDir('Garage')">Garage</button>
     </div>
     <div class="mf">
       <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="skipPaintModal()">Skip</button>
@@ -1645,8 +1641,9 @@ function _applyStopStatus(idx, val) {
 function openPaintModal(idx) {
   _paintModalIdx = idx;
   const existing = (window._rvPaintDetails || {})[idx] || { issues: [], side: '' };
-  document.getElementById('pi_Faded_Paint').checked  = existing.issues.includes('Faded Paint');
+  document.getElementById('pi_Faded_Paint').checked   = existing.issues.includes('Faded Paint');
   document.getElementById('pi_Peeling_Paint').checked = existing.issues.includes('Peeling Paint');
+  document.getElementById('pi_Chipped_Paint').checked = existing.issues.includes('Chipped Paint');
   document.querySelectorAll('.paint-dir-btn').forEach(b => b.classList.toggle('active', b.dataset.dir === existing.side));
   document.getElementById('ovPaintDetail').classList.add('on');
 }
@@ -1656,7 +1653,7 @@ function setPaintDir(dir) {
 }
 
 function confirmPaintModal() {
-  const issues = ['Faded Paint','Peeling Paint'].filter(issue =>
+  const issues = ['Faded Paint','Peeling Paint','Chipped Paint'].filter(issue =>
     document.getElementById('pi_' + issue.replace(' ','_')).checked
   );
   const activeBtn = document.querySelector('.paint-dir-btn.active');
