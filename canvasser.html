@@ -185,7 +185,7 @@
           <div style="font-size:15px;font-weight:700;color:#1a2744;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="mapCurStreet"></div>
           <div style="font-size:12px;color:#6b7280;" id="mapCurCity"></div>
         </div>
-        <button class="map-status-btn" onclick="openStatusPicker(currentRoute.liveStopIdx)">Set Status</button>
+        <button class="map-status-btn" onclick="openMapStatusPicker()">Set Status</button>
       </div>
     </div>
   </div>
@@ -465,17 +465,37 @@ function renderDetailStops() {
   }).join('');
 }
 
-// ── STOP TAP ─────────────────────────────────────
+// ── STOP TAP (list view) ──────────────────────────
 function tappedStop(idx) {
   if (!currentRoute) return;
-
-  // Mark as current stop — write directly to the route doc so admin sees it via onSnapshot
-  const stop = (currentRoute.stops || [])[idx];
   db.collection('routes').doc(String(currentRoute.id))
     .update({ liveStopIdx: idx, liveUpdatedAt: new Date().toISOString() })
     .catch(e => console.warn('liveStopIdx update failed:', e));
-
   openStatusPicker(idx);
+}
+
+// ── MAP PIN TAP — select only, don't open picker ──
+let mapSelectedIdx = null;
+
+function selectMapStop(i) {
+  mapSelectedIdx = i;
+  // Tell Firestore which stop canvasser is on (admin sees it live)
+  db.collection('routes').doc(String(currentRoute.id))
+    .update({ liveStopIdx: i, liveUpdatedAt: new Date().toISOString() })
+    .catch(e => console.warn('liveStopIdx update failed:', e));
+  // Update bottom card
+  const stops = currentRoute.stops || [];
+  if (stops[i]) {
+    document.getElementById('mapCurBadge').textContent = i + 1;
+    document.getElementById('mapCurStreet').textContent = stops[i].street;
+    document.getElementById('mapCurCity').textContent = stops[i].city;
+    document.getElementById('mapBottomCard').style.display = 'block';
+  }
+  refreshMapMarkers();
+}
+
+function openMapStatusPicker() {
+  if (mapSelectedIdx !== null) openStatusPicker(mapSelectedIdx);
 }
 
 // ── PHONE FORMATTING ─────────────────────────────
@@ -511,11 +531,11 @@ function openStatusPicker(idx) {
   btnsEl.innerHTML = STATUS_OPTS.map(o => {
     const isSelected = stop.status === o.val;
     const isLead = o.val === 'Lead' || o.val === 'Lead Contact Later';
-    const isNotHome = o.val === 'Not Home';
+    const isPaint = o.val === 'Not Home' || o.val === 'No Soliciting';
     const handler = isLead
       ? `showLeadForm('${o.val.replace(/'/g, "\\'")}')`
-      : isNotHome
-      ? `showPaintForm()`
+      : isPaint
+      ? `showPaintForm('${o.val.replace(/'/g, "\\'")}')`
       : `commitStatus('${o.val.replace(/'/g, "\\'")}')`;
     return `<button
       class="status-btn${isSelected ? ' selected' : ''}"
@@ -621,8 +641,10 @@ async function submitLead() {
 const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbw9Y-qGeB25MBgCKxS0u1GD9dK-SDkYgTNItVi-gIgrcWulQYZinBwxfWKPjOB55RcPfw/exec';
 let _paintIssues = [];
 let _paintDir = '';
+let _paintSheetName = 'Not Home';
 
-function showPaintForm() {
+function showPaintForm(sheetName) {
+  _paintSheetName = sheetName || 'Not Home';
   _paintIssues = [];
   _paintDir = '';
   document.getElementById('btnFadedPaint').classList.remove('selected');
@@ -666,22 +688,22 @@ async function submitPaintDetail() {
     await fetch(SHEETS_URL, {
       method: 'POST', mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ sheetName: 'Not Home', rows })
+      body: JSON.stringify({ sheetName: _paintSheetName, rows })
     });
   } catch(e) { console.warn('Sheets send failed:', e); }
 
   // Save status + paint details + mailSent to Firestore
-  await commitNotHome(_paintIssues, _paintDir, true);
+  await commitWithPaintDetail(_paintSheetName, _paintIssues, _paintDir, true);
 
   btn.textContent = 'Submit to Mail →';
   btn.disabled = false;
 }
 
 function skipPaintDetail() {
-  commitNotHome([], '', false);
+  commitWithPaintDetail(_paintSheetName, [], '', false);
 }
 
-async function commitNotHome(paintIssues, paintSide, mailSent) {
+async function commitWithPaintDetail(status, paintIssues, paintSide, mailSent) {
   if (!currentRoute || pickingStopIdx === null) return;
   const idx = pickingStopIdx;
   const note = document.getElementById('sheetNote').value.trim();
@@ -689,7 +711,7 @@ async function commitNotHome(paintIssues, paintSide, mailSent) {
 
   const stops = JSON.parse(JSON.stringify(currentRoute.stops || []));
   if (!stops[idx]) return;
-  stops[idx].status = 'Not Home';
+  stops[idx].status = status;
   stops[idx].note = note;
   stops[idx].paintIssues = paintIssues;
   stops[idx].paintSide = paintSide;
@@ -748,6 +770,7 @@ window.initCanvasserMap = function() {
 
 function closeRouteMap() {
   stopGeoWatch();
+  mapSelectedIdx = null;
   showScreen('screenDetail');
 }
 
@@ -773,8 +796,31 @@ function renderCanvasserMap() {
   cMarkers.forEach(m => m.setMap(null)); cMarkers = [];
   if (cPolyline) { cPolyline.setMap(null); cPolyline = null; }
 
-  const curIdx = currentRoute.liveStopIdx;
+  refreshMapMarkers();
 
+  // Route polyline
+  cPolyline = new google.maps.Polyline({
+    path: stops.map(s => ({ lat: s.lat, lng: s.lng })),
+    geodesic: true,
+    strokeColor: '#1a2744',
+    strokeOpacity: 0.6,
+    strokeWeight: 3,
+    map: cMap
+  });
+
+  // Fit all stops in view
+  const bounds = new google.maps.LatLngBounds();
+  stops.forEach(s => bounds.extend({ lat: s.lat, lng: s.lng }));
+  cMap.fitBounds(bounds, { top: 24, right: 24, bottom: 120, left: 24 });
+
+  updateMapBottomCard();
+}
+
+function refreshMapMarkers() {
+  if (!cMap || !currentRoute) return;
+  cMarkers.forEach(m => m.setMap(null)); cMarkers = [];
+  const stops = currentRoute.stops || [];
+  const curIdx = mapSelectedIdx !== null ? mapSelectedIdx : currentRoute.liveStopIdx;
   stops.forEach((s, i) => {
     const isCur  = i === curIdx;
     const isDone = !!s.status;
@@ -794,26 +840,9 @@ function renderCanvasserMap() {
       zIndex: isCur ? 200 : 100 + i,
       title: `Stop ${i + 1}: ${s.street}`
     });
-    marker.addListener('click', () => tappedStop(i));
+    marker.addListener('click', () => selectMapStop(i));
     cMarkers.push(marker);
   });
-
-  // Route polyline
-  cPolyline = new google.maps.Polyline({
-    path: stops.map(s => ({ lat: s.lat, lng: s.lng })),
-    geodesic: true,
-    strokeColor: '#1a2744',
-    strokeOpacity: 0.6,
-    strokeWeight: 3,
-    map: cMap
-  });
-
-  // Fit all stops in view
-  const bounds = new google.maps.LatLngBounds();
-  stops.forEach(s => bounds.extend({ lat: s.lat, lng: s.lng }));
-  cMap.fitBounds(bounds, { top: 24, right: 24, bottom: 120, left: 24 });
-
-  updateMapBottomCard();
 }
 
 function updateMapBottomCard() {
