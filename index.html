@@ -469,7 +469,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 <!-- PAINT DETAIL MODAL -->
 <div class="ov" id="ovPaintDetail" style="z-index:10001;">
   <div class="mod paint-mod">
-    <div class="mh">🏠 Not Home — Paint Details <button onclick="skipPaintModal()">×</button></div>
+    <div class="mh"><span id="paintModalTitle">🏠 Not Home</span> — Paint Details <button onclick="skipPaintModal()">×</button></div>
     <div class="paint-section-label">Paint Issues Noticed</div>
     <div class="paint-issues">
       <label><input type="checkbox" id="pi_Faded_Paint"> Faded Paint</label>
@@ -1562,7 +1562,8 @@ let reviewRouteId = null;
 
 function openReview(id) {
   reviewRouteId = id;
-  window._rvStatuses = {};  // reset temp status store
+  window._rvStatuses = {};
+  window._rvPaintDetails = {};
   const routes = getSavedRoutes();
   const route = routes.find(r => r.id === id);
   if (!route) return;
@@ -1643,12 +1644,22 @@ let _paintModalStatus = 'Not Home';
 function openPaintModal(idx, status) {
   _paintModalIdx = idx;
   _paintModalStatus = status || 'Not Home';
-  document.querySelector('#ovPaintDetail .mh').childNodes[0].textContent = (status === 'No Soliciting' ? '🚫 No Soliciting' : '🏠 Not Home') + ' — Paint Details ';
-  const existing = (window._rvPaintDetails || {})[idx] || { issues: [], sides: [] };
-  // Ensure sides is always an array (backwards compat)
+  document.getElementById('paintModalTitle').textContent = status === 'No Soliciting' ? '🚫 No Soliciting' : '🏠 Not Home';
+
+  // Use in-session edits if present, otherwise fall back to saved stop data
+  let existing = (window._rvPaintDetails || {})[idx];
+  if (!existing) {
+    const routes = getSavedRoutes();
+    const route = routes.find(r => r.id === reviewRouteId);
+    const stop = route && (route.stops || [])[idx];
+    existing = (stop && stop.paintIssues && stop.paintIssues.length)
+      ? { issues: stop.paintIssues || [], sides: stop.paintSides || [] }
+      : { issues: [], sides: [] };
+  }
   if (!Array.isArray(existing.sides)) existing.sides = existing.side ? [existing.side] : [];
   if (!window._rvPaintDetails) window._rvPaintDetails = {};
   window._rvPaintDetails[idx] = existing;
+
   document.getElementById('pi_Faded_Paint').checked   = existing.issues.includes('Faded Paint');
   document.getElementById('pi_Peeling_Paint').checked = existing.issues.includes('Peeling Paint');
   document.getElementById('pi_Chipped_Paint').checked = existing.issues.includes('Chipped Paint');
