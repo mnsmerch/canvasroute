@@ -92,8 +92,8 @@
     /* ── MAP SCREEN ── */
     .map-wrap { position: relative; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
     #canvasserMap { flex: 1; width: 100%; min-height: 0; }
-    .map-bottom-card { position: absolute; bottom: 0; left: 0; right: 0; background: #fff; border-radius: 16px 16px 0 0; padding: 14px 16px env(safe-area-inset-bottom, 20px); box-shadow: 0 -4px 24px rgba(0,0,0,.18); z-index: 10; }
-    .map-cur-badge { width: 34px; height: 34px; border-radius: 50%; background: #10b981; color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .map-bottom-card { position: absolute; bottom: 70px; left: 0; right: 0; background: #fff; border-radius: 16px 16px 0 0; padding: 14px 16px 20px; box-shadow: 0 -4px 24px rgba(0,0,0,.18); z-index: 10; }
+    .map-cur-badge { width: 34px; height: 34px; border-radius: 50%; background: #e8601a; color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .map-status-btn { background: #6b3fa0; color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
     .map-status-btn:active { background: #5b2d90; }
 
@@ -778,7 +778,7 @@ function renderCanvasserMap() {
   stops.forEach((s, i) => {
     const isCur  = i === curIdx;
     const isDone = !!s.status;
-    const fill   = isCur ? '%2310b981' : isDone ? '%239ca3af' : '%231a2744';
+    const fill   = isCur ? '%23e8601a' : isDone ? '%239ca3af' : '%231a2744';
     const size   = isCur ? 36 : 28;
     const anchor = isCur ? 18 : 14;
     const anchorY = isCur ? 47 : 37;
