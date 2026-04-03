@@ -181,6 +181,17 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 /* NEW STATUS COLORS */
 
 
+/* PAINT DETAIL MINI-MODAL */
+.paint-mod { max-width: 380px; }
+.paint-issues { display: flex; flex-direction: column; gap: 10px; padding: 16px 20px 8px; }
+.paint-issues label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.paint-issues input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color: #d97706; }
+.paint-section-label { font-size: 11px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: .5px; padding: 12px 20px 6px; }
+.paint-dir-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; padding: 0 20px 16px; }
+.paint-dir-btn { padding: 7px 4px; border: 1.5px solid #d1d5db; border-radius: 5px; background: #f9fafb; color: #374151; font-size: 12px; font-weight: 700; cursor: pointer; text-align: center; transition: all .12s; }
+.paint-dir-btn:hover { background: #fef9c3; border-color: #ca8a04; }
+.paint-dir-btn.active { background: #d97706; border-color: #d97706; color: #fff; }
+
 /* TIME FIELDS in review */
 .time-row { display: flex; gap: 16px; padding: 12px 0 4px; align-items: center; flex-wrap: wrap; }
 .time-field { display: flex; flex-direction: column; gap: 3px; }
@@ -449,6 +460,34 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
     <div class="mf">
       <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeReview()">Close</button>
       <button class="btn bpurple" onclick="saveReview()">💾 Save Results</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAINT DETAIL MODAL -->
+<div class="ov" id="ovPaintDetail" style="z-index:10001;">
+  <div class="mod paint-mod">
+    <div class="mh">🏠 Not Home — Paint Details <button onclick="skipPaintModal()">×</button></div>
+    <div class="paint-section-label">Paint Issues Noticed</div>
+    <div class="paint-issues">
+      <label><input type="checkbox" id="pi_Faded_Paint"> Faded Paint</label>
+      <label><input type="checkbox" id="pi_Peeling_Paint"> Peeling Paint</label>
+    </div>
+    <div class="paint-section-label">Which Side of the House?</div>
+    <div class="paint-dir-grid">
+      <button class="paint-dir-btn" data-dir="NW" onclick="setPaintDir('NW')">NW</button>
+      <button class="paint-dir-btn" data-dir="N"  onclick="setPaintDir('N')">N</button>
+      <button class="paint-dir-btn" data-dir="NE" onclick="setPaintDir('NE')">NE</button>
+      <button class="paint-dir-btn" data-dir="W"  onclick="setPaintDir('W')">W</button>
+      <button class="paint-dir-btn" data-dir=""   onclick="setPaintDir('')" style="font-size:10px;color:#9ca3af;">None</button>
+      <button class="paint-dir-btn" data-dir="E"  onclick="setPaintDir('E')">E</button>
+      <button class="paint-dir-btn" data-dir="SW" onclick="setPaintDir('SW')">SW</button>
+      <button class="paint-dir-btn" data-dir="S"  onclick="setPaintDir('S')">S</button>
+      <button class="paint-dir-btn" data-dir="SE" onclick="setPaintDir('SE')">SE</button>
+    </div>
+    <div class="mf">
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="skipPaintModal()">Skip</button>
+      <button class="btn bh" style="background:#fef9c3;border-color:#d97706;color:#854d0e;" onclick="confirmPaintModal()">✔ Save Details</button>
     </div>
   </div>
 </div>
@@ -1567,20 +1606,58 @@ function openReview(id) {
   document.getElementById('ovReview').classList.add('on');
 }
 
+let _paintModalIdx = null;
+
 function setStopStatus(idx, val) {
-  // Store in a temp map keyed by index
+  if (val === 'Not Home') { openPaintModal(idx); return; }
+  _applyStopStatus(idx, val);
+}
+
+function _applyStopStatus(idx, val) {
   if (!window._rvStatuses) window._rvStatuses = {};
   window._rvStatuses[idx] = val;
-
-  // Re-render just this row's buttons
   const row = document.getElementById('rvi_' + idx);
   if (!row) return;
   row.classList.toggle('has-status', !!val);
   const btnsDiv = row.querySelector('.rv-btns');
+  const paintDetail = (window._rvPaintDetails || {})[idx];
+  const paintTag = (val === 'Not Home' && paintDetail && (paintDetail.issues.length || paintDetail.side))
+    ? `<span style="font-size:10px;background:#fef9c3;color:#854d0e;border:1px solid #d97706;border-radius:3px;padding:1px 5px;margin-left:4px;">🎨 ${[...paintDetail.issues, paintDetail.side].filter(Boolean).join(', ')}</span>`
+    : '';
   btnsDiv.innerHTML = STATUS_OPTS.filter(o => o.val).map(o => {
     const isActive = val === o.val;
     return `<button class="rv-btn s-${o.cls}${isActive ? ' active' : ''}" onclick="setStopStatus(${idx}, '${o.val}')">${o.label}</button>`;
-  }).join('') + (val ? `<button class="rv-btn" style="color:#999;border-color:#ddd;" onclick="setStopStatus(${idx}, '')">✕ Clear</button>` : '');
+  }).join('') + paintTag + (val ? `<button class="rv-btn" style="color:#999;border-color:#ddd;" onclick="setStopStatus(${idx}, '')">✕ Clear</button>` : '');
+}
+
+function openPaintModal(idx) {
+  _paintModalIdx = idx;
+  const existing = (window._rvPaintDetails || {})[idx] || { issues: [], side: '' };
+  document.getElementById('pi_Faded_Paint').checked  = existing.issues.includes('Faded Paint');
+  document.getElementById('pi_Peeling_Paint').checked = existing.issues.includes('Peeling Paint');
+  document.querySelectorAll('.paint-dir-btn').forEach(b => b.classList.toggle('active', b.dataset.dir === existing.side));
+  document.getElementById('ovPaintDetail').classList.add('on');
+}
+
+function setPaintDir(dir) {
+  document.querySelectorAll('.paint-dir-btn').forEach(b => b.classList.toggle('active', b.dataset.dir === dir));
+}
+
+function confirmPaintModal() {
+  const issues = ['Faded Paint','Peeling Paint'].filter(issue =>
+    document.getElementById('pi_' + issue.replace(' ','_')).checked
+  );
+  const activeBtn = document.querySelector('.paint-dir-btn.active');
+  const side = activeBtn ? activeBtn.dataset.dir : '';
+  if (!window._rvPaintDetails) window._rvPaintDetails = {};
+  window._rvPaintDetails[_paintModalIdx] = { issues, side };
+  document.getElementById('ovPaintDetail').classList.remove('on');
+  _applyStopStatus(_paintModalIdx, 'Not Home');
+}
+
+function skipPaintModal() {
+  document.getElementById('ovPaintDetail').classList.remove('on');
+  _applyStopStatus(_paintModalIdx, 'Not Home');
 }
 
 function closeReview() {
@@ -1616,15 +1693,49 @@ function saveReview() {
     if (window._rvStatuses && window._rvStatuses[i] !== undefined) {
       s.status = window._rvStatuses[i];
     }
+    if (window._rvPaintDetails && window._rvPaintDetails[i]) {
+      s.paintIssues = window._rvPaintDetails[i].issues;
+      s.paintSide   = window._rvPaintDetails[i].side;
+    }
   });
   window._rvStatuses = {};
+  window._rvPaintDetails = {};
   const st = document.getElementById('rvStartTime')?.value;
   const et = document.getElementById('rvEndTime')?.value;
   if (st) route.startTime = st;
   if (et) route.endTime = et;
   putSavedRoutes(routes);
+  autoSendNotHomeStops(route);
   document.getElementById('ovReview').classList.remove('on');
   openSavedRoutes();
+}
+
+async function autoSendNotHomeStops(route) {
+  const toSend = (route.stops || []).filter(s =>
+    s.status === 'Not Home' && s.paintIssues && s.paintIssues.length > 0 && !s.mailSent
+  );
+  if (!toSend.length) return;
+  const rows = toSend.map(s => {
+    const parts = (s.city || '').split(', ');
+    return { address: s.street, city: parts[0] || '', zip: parts[2] || parts[1] || '', paintIssue: (s.paintIssues || []).join(', '), side: s.paintSide || '' };
+  });
+  try {
+    await fetch(SHEETS_URL, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ sheetName: 'Not Home', rows })
+    });
+    // Mark as mail sent
+    const routes = getSavedRoutes();
+    const r = routes.find(rt => rt.id === route.id);
+    if (r) {
+      toSend.forEach(sent => {
+        const stop = r.stops.find(s => s.fullAddress === sent.fullAddress);
+        if (stop) stop.mailSent = true;
+      });
+      putSavedRoutes(routes);
+    }
+  } catch(e) { console.warn('Auto-send to Sheets failed:', e); }
 }
 
 // ── REPORTS ──────────────────────────────────────
@@ -1661,7 +1772,7 @@ async function sendToGoogleSheets() {
 
   const rows = unsent.map(s => {
     const parts = (s.city || '').split(', ');
-    return { address: s.street, city: parts[0] || '', zip: parts[2] || parts[1] || '' };
+    return { address: s.street, city: parts[0] || '', zip: parts[2] || parts[1] || '', paintIssue: (s.paintIssues || []).join(', '), side: s.paintSide || '' };
   });
 
   try {
@@ -1792,6 +1903,7 @@ function renderReport() {
       <div class="rr-addr">
         <div class="rr-street">${x(s.street)}</div>
         <div class="rr-city">${x(s.city)}</div>
+        ${s.paintIssues && s.paintIssues.length ? `<div class="rr-note">🎨 ${x(s.paintIssues.join(', '))}${s.paintSide ? ' — ' + x(s.paintSide) + ' side' : ''}</div>` : ''}
         ${s.note ? `<div class="rr-note">📝 ${x(s.note)}</div>` : ''}
         <div class="rr-route">📂 ${x(s.routeName)} &nbsp;·&nbsp; 👤 ${x(s.canvasser)} &nbsp;·&nbsp; 📅 ${s.routeDate}${s.startTime ? ` &nbsp;·&nbsp; ⏱ ${s.startTime}${s.endTime?' – '+s.endTime:''}` : ''}</div>
       </div>
