@@ -485,7 +485,8 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
     </div>
     <div class="mf">
       <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="skipPaintModal()">Skip</button>
-      <button class="btn bh" style="background:#fef9c3;border-color:#d97706;color:#854d0e;" onclick="confirmPaintModal()">✔ Save Details</button>
+      <button class="btn br" style="font-size:11px;" onclick="clearPaintModal()">🗑 Clear</button>
+      <button class="btn bh" style="background:#fef9c3;border-color:#d97706;color:#854d0e;" onclick="confirmPaintModal()">✔ Save & Send</button>
     </div>
   </div>
 </div>
@@ -1732,6 +1733,13 @@ function skipPaintModal() {
   _applyStopStatus(_paintModalIdx, _paintModalStatus);
 }
 
+function clearPaintModal() {
+  if (!window._rvPaintDetails) window._rvPaintDetails = {};
+  window._rvPaintDetails[_paintModalIdx] = { issues: [], sides: [], cleared: true };
+  document.getElementById('ovPaintDetail').classList.remove('on');
+  _applyStopStatus(_paintModalIdx, _paintModalStatus);
+}
+
 function closeReview() {
   document.getElementById('ovReview').classList.remove('on');
   openSavedRoutes();
@@ -1768,6 +1776,7 @@ function saveReview() {
     if (window._rvPaintDetails && window._rvPaintDetails[i]) {
       s.paintIssues = window._rvPaintDetails[i].issues;
       s.paintSides  = window._rvPaintDetails[i].sides;
+      s.mailSent    = false; // reset so it re-sends (or clears if no issues selected)
     }
   });
   window._rvStatuses = {};
