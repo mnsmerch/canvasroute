@@ -1772,31 +1772,32 @@ function saveReview() {
 }
 
 async function autoSendNotHomeStops(route) {
-  const toSend = (route.stops || []).filter(s =>
-    s.status === 'Not Home' && s.paintIssues && s.paintIssues.length > 0 && !s.mailSent
-  );
-  if (!toSend.length) return;
-  const rows = toSend.map(s => {
-    const parts = (s.city || '').split(', ');
-    return { address: s.street, city: parts[0] || '', zip: parts[2] || parts[1] || '', paintIssue: buildIssuePhrase(s.paintIssues || []), side: buildSidePhrase(s.paintSides || []) };
-  });
-  try {
-    await fetch(SHEETS_URL, {
-      method: 'POST', mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ sheetName: 'Not Home', rows })
+  for (const sheetName of ['Not Home', 'No Soliciting']) {
+    const toSend = (route.stops || []).filter(s =>
+      s.status === sheetName && s.paintIssues && s.paintIssues.length > 0 && !s.mailSent
+    );
+    if (!toSend.length) continue;
+    const rows = toSend.map(s => {
+      const parts = (s.city || '').split(', ');
+      return { address: s.street, city: parts[0] || '', zip: parts[2] || parts[1] || '', paintIssue: buildIssuePhrase(s.paintIssues || []), side: buildSidePhrase(s.paintSides || []) };
     });
-    // Mark as mail sent
-    const routes = getSavedRoutes();
-    const r = routes.find(rt => rt.id === route.id);
-    if (r) {
-      toSend.forEach(sent => {
-        const stop = r.stops.find(s => s.fullAddress === sent.fullAddress);
-        if (stop) stop.mailSent = true;
+    try {
+      await fetch(SHEETS_URL, {
+        method: 'POST', mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ sheetName, rows })
       });
-      putSavedRoutes(routes);
-    }
-  } catch(e) { console.warn('Auto-send to Sheets failed:', e); }
+      const routes = getSavedRoutes();
+      const r = routes.find(rt => rt.id === route.id);
+      if (r) {
+        toSend.forEach(sent => {
+          const stop = r.stops.find(s => s.fullAddress === sent.fullAddress);
+          if (stop) stop.mailSent = true;
+        });
+        putSavedRoutes(routes);
+      }
+    } catch(e) { console.warn('Auto-send to Sheets failed:', e); }
+  }
 }
 
 // ── REPORTS ──────────────────────────────────────
