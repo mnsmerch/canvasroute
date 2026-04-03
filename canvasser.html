@@ -238,6 +238,21 @@
       </div>
     </div>
 
+    <!-- VIEW 4: Wrong address correction -->
+    <div id="wrongAddrView" style="display:none;">
+      <div class="sheet-section">
+        <div style="font-size:16px;font-weight:700;color:#1a2744;margin-bottom:16px;">📍 Correct the Address</div>
+        <label class="sheet-label">STREET ADDRESS</label>
+        <input class="sheet-note" type="text" id="correctedStreet" placeholder="e.g. 142 Oak Ave" autocomplete="off" style="display:block;padding:10px;margin-bottom:12px;">
+        <label class="sheet-label">CITY, STATE, ZIP</label>
+        <input class="sheet-note" type="text" id="correctedCity" placeholder="e.g. Springfield, IL, 62701" autocomplete="off" style="display:block;padding:10px;margin-bottom:12px;">
+      </div>
+      <div style="padding: 0 16px 16px; display:flex; flex-direction:column; gap:8px;">
+        <button onclick="saveCorrectAddress()" style="width:100%;padding:15px;background:#c2410c;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">💾 Save Corrected Address</button>
+        <button onclick="backToStatusPicker()" style="width:100%;padding:13px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;color:#6b7280;cursor:pointer;">← Back</button>
+      </div>
+    </div>
+
     <!-- VIEW 2: Lead capture form -->
     <div id="leadFormView" style="display:none;">
       <div class="sheet-section">
@@ -525,6 +540,7 @@ function openStatusPicker(idx) {
   document.getElementById('statusView').style.display = 'block';
   document.getElementById('leadFormView').style.display = 'none';
   document.getElementById('paintDetailView').style.display = 'none';
+  document.getElementById('wrongAddrView').style.display = 'none';
   pendingLeadStatus = null;
 
   const btnsEl = document.getElementById('statusBtns');
@@ -532,10 +548,13 @@ function openStatusPicker(idx) {
     const isSelected = stop.status === o.val;
     const isLead = o.val === 'Lead' || o.val === 'Lead Contact Later';
     const isPaint = o.val === 'Not Home' || o.val === 'No Soliciting';
+    const isWrong = o.val === 'Wrong Address';
     const handler = isLead
       ? `showLeadForm('${o.val.replace(/'/g, "\\'")}')`
       : isPaint
       ? `showPaintForm('${o.val.replace(/'/g, "\\'")}')`
+      : isWrong
+      ? `showWrongAddrForm()`
       : `commitStatus('${o.val.replace(/'/g, "\\'")}')`;
     return `<button
       class="status-btn${isSelected ? ' selected' : ''}"
@@ -567,6 +586,7 @@ function backToStatusPicker() {
   document.getElementById('statusView').style.display = 'block';
   document.getElementById('leadFormView').style.display = 'none';
   document.getElementById('paintDetailView').style.display = 'none';
+  document.getElementById('wrongAddrView').style.display = 'none';
 }
 
 function sheetOverlayClick(e) {
@@ -578,6 +598,7 @@ function closeStatusPicker() {
   document.getElementById('statusView').style.display = 'block';
   document.getElementById('leadFormView').style.display = 'none';
   document.getElementById('paintDetailView').style.display = 'none';
+  document.getElementById('wrongAddrView').style.display = 'none';
   pendingLeadStatus = null;
   pickingStopIdx = null;
 }
@@ -701,6 +722,40 @@ async function submitPaintDetail() {
 
 function skipPaintDetail() {
   commitWithPaintDetail(_paintSheetName, [], '', false);
+}
+
+function showWrongAddrForm() {
+  const stop = (currentRoute.stops || [])[pickingStopIdx];
+  document.getElementById('correctedStreet').value = stop ? stop.street : '';
+  document.getElementById('correctedCity').value = stop ? stop.city : '';
+  document.getElementById('statusView').style.display = 'none';
+  document.getElementById('wrongAddrView').style.display = 'block';
+  setTimeout(() => document.getElementById('correctedStreet').focus(), 80);
+}
+
+async function saveCorrectAddress() {
+  const street = document.getElementById('correctedStreet').value.trim();
+  const city   = document.getElementById('correctedCity').value.trim();
+  if (!street) { document.getElementById('correctedStreet').focus(); alert('Please enter the corrected street address.'); return; }
+
+  if (!currentRoute || pickingStopIdx === null) return;
+  const note = document.getElementById('sheetNote').value.trim();
+  closeStatusPicker();
+
+  const stops = JSON.parse(JSON.stringify(currentRoute.stops || []));
+  if (!stops[pickingStopIdx]) return;
+  stops[pickingStopIdx].status = 'Wrong Address';
+  stops[pickingStopIdx].note = note;
+  stops[pickingStopIdx].street = street;
+  stops[pickingStopIdx].city = city;
+  stops[pickingStopIdx].fullAddress = city ? `${street}, ${city}` : street;
+
+  try {
+    await db.collection('routes').doc(String(currentRoute.id)).update({ stops });
+  } catch(e) {
+    alert('Failed to save. Check your connection and try again.');
+    console.error(e);
+  }
 }
 
 async function commitWithPaintDetail(status, paintIssues, paintSide, mailSent) {
