@@ -1617,7 +1617,7 @@ function openReview(id) {
 let _paintModalIdx = null;
 
 function setStopStatus(idx, val) {
-  if (val === 'Not Home') { openPaintModal(idx); return; }
+  if (val === 'Not Home' || val === 'No Soliciting') { openPaintModal(idx, val); return; }
   _applyStopStatus(idx, val);
 }
 
@@ -1638,8 +1638,12 @@ function _applyStopStatus(idx, val) {
   }).join('') + paintTag + (val ? `<button class="rv-btn" style="color:#999;border-color:#ddd;" onclick="setStopStatus(${idx}, '')">✕ Clear</button>` : '');
 }
 
-function openPaintModal(idx) {
+let _paintModalStatus = 'Not Home';
+
+function openPaintModal(idx, status) {
   _paintModalIdx = idx;
+  _paintModalStatus = status || 'Not Home';
+  document.querySelector('#ovPaintDetail .mh').childNodes[0].textContent = (status === 'No Soliciting' ? '🚫 No Soliciting' : '🏠 Not Home') + ' — Paint Details ';
   const existing = (window._rvPaintDetails || {})[idx] || { issues: [], sides: [] };
   // Ensure sides is always an array (backwards compat)
   if (!Array.isArray(existing.sides)) existing.sides = existing.side ? [existing.side] : [];
@@ -1709,12 +1713,12 @@ function confirmPaintModal() {
   if (!window._rvPaintDetails) window._rvPaintDetails = {};
   window._rvPaintDetails[_paintModalIdx] = { issues, sides };
   document.getElementById('ovPaintDetail').classList.remove('on');
-  _applyStopStatus(_paintModalIdx, 'Not Home');
+  _applyStopStatus(_paintModalIdx, _paintModalStatus);
 }
 
 function skipPaintModal() {
   document.getElementById('ovPaintDetail').classList.remove('on');
-  _applyStopStatus(_paintModalIdx, 'Not Home');
+  _applyStopStatus(_paintModalIdx, _paintModalStatus);
 }
 
 function closeReview() {
