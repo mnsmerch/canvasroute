@@ -247,21 +247,22 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 #loadingScreen .ls-spin { width:30px; height:30px; border:3px solid rgba(255,255,255,.2); border-top-color:var(--orange); border-radius:50%; animation:spin .8s linear infinite; }
 #adminLoginScreen { position:fixed; inset:0; background:var(--navy); z-index:999999; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px 24px; }
 #adminLoginScreen .al-logo { font-size:32px; font-weight:900; color:#fff; letter-spacing:1px; margin-bottom:4px; }
-#adminLoginScreen .al-logo em { color:var(--orange); font-style:normal; }
+#adminLoginScreen .al-logo em { color:#a4cb78; font-style:normal; }
 #adminLoginScreen .al-sub { font-size:14px; color:rgba(255,255,255,.5); margin-bottom:36px; }
 #adminLoginScreen .al-form { width:100%; max-width:340px; display:flex; flex-direction:column; gap:12px; }
 #adminLoginScreen label { font-size:11px; font-weight:700; color:rgba(255,255,255,.6); letter-spacing:.6px; }
 #adminLoginScreen input { width:100%; padding:13px 14px; border:2px solid rgba(255,255,255,.15); border-radius:10px; background:rgba(255,255,255,.08); color:#fff; font-size:16px; outline:none; }
-#adminLoginScreen input:focus { border-color:var(--orange); }
+#adminLoginScreen input:focus { border-color:#a4cb78; }
 #adminLoginScreen input::placeholder { color:rgba(255,255,255,.3); }
-#adminLoginScreen .al-btn { padding:14px; background:var(--orange); color:#fff; border:none; border-radius:10px; font-size:16px; font-weight:700; cursor:pointer; margin-top:4px; }
-#adminLoginScreen .al-btn:active { background:#c0510d; }
+#adminLoginScreen .al-btn { padding:14px; background:#a4cb78; color:#000; border:none; border-radius:10px; font-size:16px; font-weight:700; cursor:pointer; margin-top:4px; }
+#adminLoginScreen .al-btn:active { background:#8fb862; }
 #adminLoginScreen .al-err { color:#fca5a5; font-size:13px; text-align:center; display:none; }
 </style>
 </head>
 <body>
 <div id="adminLoginScreen">
-  <div class="al-logo">📋 <em>CANVAS</em>ROUTE</div>
+  <img src="https://assets.cdn.filesafe.space/nPPG7BKPRH9771vRMDZ6/media/69cff548a7dcb4cff05f5c23.png" alt="Paint Pals" style="width:100px;height:100px;object-fit:contain;border-radius:16px;margin-bottom:16px;">
+  <div class="al-logo"><em>CANVAS</em>ROUTE</div>
   <div class="al-sub">Admin Portal</div>
   <div class="al-form">
     <div>
@@ -295,6 +296,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
       <button class="btn bo" style="background:#0f766e;" onclick="openReport()">📊 REPORT</button>
       <button class="btn bg" onclick="openModal()">🖨 PRINT</button>
       <button class="btn br" onclick="clearAll()">✕ CLEAR</button>
+      <button class="btn bh" style="color:#6b7280;border-color:var(--rule);" onclick="adminLogout()">Sign Out</button>
     </div>
   </div>
 
@@ -583,6 +585,16 @@ function doAdminLogin() {
     document.getElementById('adminPass').value = '';
     document.getElementById('adminPass').focus();
   }
+}
+
+function adminLogout() {
+  adminAuthed = false;
+  sessionStorage.removeItem('adminAuth');
+  document.getElementById('adminUser').value = '';
+  document.getElementById('adminPass').value = '';
+  document.getElementById('adminLoginErr').style.display = 'none';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('adminLoginScreen').style.display = 'flex';
 }
 
 let liveTrackingData = {}; // { routeId(string): { canvasser, stopIdx, stopAddr, updatedAt } }
