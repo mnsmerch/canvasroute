@@ -429,6 +429,9 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
       </div>
       <button class="btn bh" style="color:var(--ink);border-color:var(--rule);align-self:flex-end;" onclick="clearRptFilters()">↺ Reset</button>
       <button class="btn bg" style="align-self:flex-end;" onclick="exportReportCSV()">⬇ Export CSV</button>
+      <button class="btn bh" style="background:#fef9c3;border-color:#ca8a04;color:#854d0e;align-self:flex-end;" onclick="quickFilterStatus('Not Home')">🏠 Not Home</button>
+      <button class="btn bh" style="background:#fce7f3;border-color:#be185d;color:#9d174d;align-self:flex-end;" onclick="quickFilterStatus('No Soliciting')">🚫 No Soliciting</button>
+      <button id="btnSendSheets" class="btn bh" style="background:#e8f5e9;border-color:#388e3c;color:#1b5e20;align-self:flex-end;display:none;" onclick="sendToGoogleSheets()">📤 Send to Google Sheets</button>
     </div>
     <div class="rpt-summary" id="rptSummary"></div>
     <div class="rpt-results" id="rptResults"></div>
@@ -544,6 +547,9 @@ function doAdminLogin() {
 }
 
 let liveTrackingData = {}; // { routeId(string): { canvasser, stopIdx, stopAddr, updatedAt } }
+
+const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbw9Y-qGeB25MBgCKxS0u1GD9dK-SDkYgTNItVi-gIgrcWulQYZinBwxfWKPjOB55RcPfw/exec';
+let currentReportStops = []; // stores the current filtered stops for the Send to Sheets action
 
 function setupLiveTracking() {
   if (!db) return;
@@ -1635,6 +1641,54 @@ function clearRptFilters() {
   renderReport();
 }
 
+function quickFilterStatus(val) {
+  document.getElementById('rptStatus').value = val;
+  renderReport();
+}
+
+async function sendToGoogleSheets() {
+  const filterStatus = document.getElementById('rptStatus').value;
+  if (filterStatus !== 'Not Home' && filterStatus !== 'No Soliciting') {
+    alert('Please filter by "Not Home" or "No Soliciting" first.');
+    return;
+  }
+  const unsent = currentReportStops.filter(s => !s.mailSent);
+  if (!unsent.length) { alert('All stops in this filter have already been sent.'); return; }
+
+  const btn = document.getElementById('btnSendSheets');
+  btn.disabled = true;
+  btn.textContent = '📤 Sending…';
+
+  const rows = unsent.map(s => {
+    const parts = (s.city || '').split(', ');
+    return { address: s.street, city: parts[0] || '', zip: parts[2] || parts[1] || '' };
+  });
+
+  try {
+    await fetch(SHEETS_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ sheetName: filterStatus, rows })
+    });
+
+    // Mark stops as mailSent in route data
+    const routes = getSavedRoutes();
+    unsent.forEach(sent => {
+      const route = routes.find(r => r.id === sent.routeId);
+      if (!route) return;
+      const stop = route.stops.find(s => s.fullAddress === sent.fullAddress);
+      if (stop) stop.mailSent = true;
+    });
+    putSavedRoutes(routes);
+    renderReport();
+  } catch(e) {
+    alert('Error sending to Google Sheets: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '📤 Send to Google Sheets';
+  }
+}
+
 function parseRouteDate(dateStr) {
   // dateStr like "Mon, Mar 24, 2026" — convert to Date
   try { return new Date(dateStr); } catch(e) { return null; }
@@ -1666,9 +1720,21 @@ function renderReport() {
   routes.forEach(r => {
     (r.stops||[]).forEach((s,i) => {
       if (filterStatus && s.status !== filterStatus) return;
-      allStops.push({ ...s, routeName: r.name, canvasser: r.canvasser||'Unassigned', routeDate: r.date, stopNum: i+1, startTime: r.startTime||'', endTime: r.endTime||'' });
+      allStops.push({ ...s, routeId: r.id, routeName: r.name, canvasser: r.canvasser||'Unassigned', routeDate: r.date, stopNum: i+1, startTime: r.startTime||'', endTime: r.endTime||'' });
     });
   });
+  currentReportStops = allStops;
+
+  // Show/hide Send to Google Sheets button
+  const sendBtn = document.getElementById('btnSendSheets');
+  if (filterStatus === 'Not Home' || filterStatus === 'No Soliciting') {
+    const unsent = allStops.filter(s => !s.mailSent).length;
+    sendBtn.style.display = '';
+    sendBtn.textContent = `📤 Send to Google Sheets${unsent > 0 ? ' ('+unsent+' new)' : ' (all sent)'}`;
+    sendBtn.disabled = unsent === 0;
+  } else {
+    sendBtn.style.display = 'none';
+  }
 
   // Summary stats (across filtered routes, all statuses unless filtered)
   const stopsForStats = routes.flatMap(r => (r.stops||[]).filter(s => s.status));
@@ -1729,8 +1795,9 @@ function renderReport() {
         ${s.note ? `<div class="rr-note">📝 ${x(s.note)}</div>` : ''}
         <div class="rr-route">📂 ${x(s.routeName)} &nbsp;·&nbsp; 👤 ${x(s.canvasser)} &nbsp;·&nbsp; 📅 ${s.routeDate}${s.startTime ? ` &nbsp;·&nbsp; ⏱ ${s.startTime}${s.endTime?' – '+s.endTime:''}` : ''}</div>
       </div>
-      <div class="rr-status">
+      <div class="rr-status" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
         ${s.status ? `<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;background:${statusBg(s.status)};color:${statusColor(s.status)};">${x(s.status)}</span>` : '<span style="font-size:11px;color:#ccc;">—</span>'}
+        ${s.mailSent ? `<span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;background:#e0f2fe;color:#0369a1;">✉ Mail Sent</span>` : ''}
       </div>
     </div>`).join('');
 }
