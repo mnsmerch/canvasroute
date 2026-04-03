@@ -463,7 +463,7 @@ function renderDetailStops() {
         <div class="stop-street">${x(s.street)}</div>
         <div class="stop-city">${x(s.city)}</div>
         ${s.note ? `<div class="stop-note">📝 ${x(s.note)}</div>` : ''}
-        ${s.paintIssues && s.paintIssues.length ? `<div class="stop-note">🎨 ${x(s.paintIssues.join(', '))}${s.paintSide ? ' — ' + x(s.paintSide) : ''}${s.mailSent ? ' ✉' : ''}</div>` : ''}
+        ${s.paintIssues && s.paintIssues.length ? `<div class="stop-note">🎨 ${x(s.paintIssues.join(', '))}${s.paintSides && s.paintSides.length ? ' — ' + x(buildSidePhrase(s.paintSides)) : ''}${s.mailSent ? ' ✉' : ''}</div>` : ''}
       </div>
       <div class="stop-right">
         ${opt
@@ -656,13 +656,30 @@ async function submitLead() {
 
 const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbw9Y-qGeB25MBgCKxS0u1GD9dK-SDkYgTNItVi-gIgrcWulQYZinBwxfWKPjOB55RcPfw/exec';
 let _paintIssues = [];
-let _paintDir = '';
+let _paintDirs = [];
 let _paintSheetName = 'Not Home';
+
+function buildSidePhrase(parts) {
+  if (!parts || !parts.length) return '';
+  const homeParts = parts.filter(p => p !== 'Garage');
+  const hasGarage = parts.includes('Garage');
+  if (!hasGarage) {
+    const lw = homeParts.map(p => p.toLowerCase());
+    if (lw.length === 1) return `on the ${lw[0]} of your home`;
+    if (lw.length === 2) return `on the ${lw[0]} and ${lw[1]} of your home`;
+    return `on the ${lw.slice(0,-1).join(', ')}, and ${lw[lw.length-1]} of your home`;
+  }
+  if (!homeParts.length) return 'on your garage';
+  const lw = homeParts.map(p => p.toLowerCase());
+  if (lw.length === 1) return `on the ${lw[0]} of your home and garage`;
+  const rest = [...lw.slice(1), 'garage'];
+  return `on the ${lw[0]} of your home, ${rest.slice(0,-1).join(', ')}, and ${rest[rest.length-1]}`;
+}
 
 function showPaintForm(sheetName) {
   _paintSheetName = sheetName || 'Not Home';
   _paintIssues = [];
-  _paintDir = '';
+  _paintDirs = [];
   document.getElementById('btnFadedPaint').classList.remove('selected');
   document.getElementById('btnPeelingPaint').classList.remove('selected');
   document.getElementById('btnChippedPaint').classList.remove('selected');
@@ -684,8 +701,14 @@ function togglePaintIssue(issue) {
 }
 
 function setPaintDirC(dir) {
-  _paintDir = dir;
-  document.querySelectorAll('.cdir-btn').forEach(b => b.classList.toggle('active', b.dataset.dir === dir));
+  const btn = document.querySelector(`.cdir-btn[data-dir="${dir}"]`);
+  if (_paintDirs.includes(dir)) {
+    _paintDirs = _paintDirs.filter(d => d !== dir);
+    btn && btn.classList.remove('active');
+  } else {
+    _paintDirs.push(dir);
+    btn && btn.classList.add('active');
+  }
 }
 
 async function submitPaintDetail() {
@@ -693,13 +716,17 @@ async function submitPaintDetail() {
     alert('Please select at least one paint issue, or tap Skip if there are none.');
     return;
   }
+  if (!_paintDirs.length) {
+    alert('Please select at least one part of the house.');
+    return;
+  }
   const btn = document.getElementById('submitPaintBtn');
   btn.textContent = 'Sending…';
   btn.disabled = true;
 
   const stop = (currentRoute.stops || [])[pickingStopIdx];
-  const parts = (stop ? stop.city || '' : '').split(', ');
-  const rows = [{ address: stop.street, city: parts[0] || '', zip: parts[2] || parts[1] || '', paintIssue: _paintIssues.join(', '), side: _paintDir }];
+  const cityParts = (stop ? stop.city || '' : '').split(', ');
+  const rows = [{ address: stop.street, city: cityParts[0] || '', zip: cityParts[2] || cityParts[1] || '', paintIssue: _paintIssues.join(', '), side: buildSidePhrase(_paintDirs) }];
 
   try {
     await fetch(SHEETS_URL, {
@@ -710,14 +737,14 @@ async function submitPaintDetail() {
   } catch(e) { console.warn('Sheets send failed:', e); }
 
   // Save status + paint details + mailSent to Firestore
-  await commitWithPaintDetail(_paintSheetName, _paintIssues, _paintDir, true);
+  await commitWithPaintDetail(_paintSheetName, _paintIssues, _paintDirs, true);
 
   btn.textContent = 'Submit to Mail →';
   btn.disabled = false;
 }
 
 function skipPaintDetail() {
-  commitWithPaintDetail(_paintSheetName, [], '', false);
+  commitWithPaintDetail(_paintSheetName, [], [], false);
 }
 
 function showWrongAddrForm() {
@@ -754,7 +781,7 @@ async function saveCorrectAddress() {
   }
 }
 
-async function commitWithPaintDetail(status, paintIssues, paintSide, mailSent) {
+async function commitWithPaintDetail(status, paintIssues, paintSides, mailSent) {
   if (!currentRoute || pickingStopIdx === null) return;
   const idx = pickingStopIdx;
   const note = document.getElementById('sheetNote').value.trim();
@@ -765,7 +792,7 @@ async function commitWithPaintDetail(status, paintIssues, paintSide, mailSent) {
   stops[idx].status = status;
   stops[idx].note = note;
   stops[idx].paintIssues = paintIssues;
-  stops[idx].paintSide = paintSide;
+  stops[idx].paintSides = paintSides;
   stops[idx].mailSent = mailSent;
 
   try {

@@ -1640,26 +1640,60 @@ function _applyStopStatus(idx, val) {
 
 function openPaintModal(idx) {
   _paintModalIdx = idx;
-  const existing = (window._rvPaintDetails || {})[idx] || { issues: [], side: '' };
+  const existing = (window._rvPaintDetails || {})[idx] || { issues: [], sides: [] };
+  // Ensure sides is always an array (backwards compat)
+  if (!Array.isArray(existing.sides)) existing.sides = existing.side ? [existing.side] : [];
+  if (!window._rvPaintDetails) window._rvPaintDetails = {};
+  window._rvPaintDetails[idx] = existing;
   document.getElementById('pi_Faded_Paint').checked   = existing.issues.includes('Faded Paint');
   document.getElementById('pi_Peeling_Paint').checked = existing.issues.includes('Peeling Paint');
   document.getElementById('pi_Chipped_Paint').checked = existing.issues.includes('Chipped Paint');
-  document.querySelectorAll('.paint-dir-btn').forEach(b => b.classList.toggle('active', b.dataset.dir === existing.side));
+  document.querySelectorAll('.paint-dir-btn').forEach(b => b.classList.toggle('active', existing.sides.includes(b.dataset.dir)));
   document.getElementById('ovPaintDetail').classList.add('on');
 }
 
+function buildSidePhrase(parts) {
+  if (!parts || !parts.length) return '';
+  const homeParts = parts.filter(p => p !== 'Garage');
+  const hasGarage = parts.includes('Garage');
+  if (!hasGarage) {
+    const lw = homeParts.map(p => p.toLowerCase());
+    if (lw.length === 1) return `on the ${lw[0]} of your home`;
+    if (lw.length === 2) return `on the ${lw[0]} and ${lw[1]} of your home`;
+    return `on the ${lw.slice(0,-1).join(', ')}, and ${lw[lw.length-1]} of your home`;
+  }
+  if (!homeParts.length) return 'on your garage';
+  const lw = homeParts.map(p => p.toLowerCase());
+  if (lw.length === 1) return `on the ${lw[0]} of your home and garage`;
+  const rest = [...lw.slice(1), 'garage'];
+  return `on the ${lw[0]} of your home, ${rest.slice(0,-1).join(', ')}, and ${rest[rest.length-1]}`;
+}
+
 function setPaintDir(dir) {
-  document.querySelectorAll('.paint-dir-btn').forEach(b => b.classList.toggle('active', b.dataset.dir === dir));
+  const btn = document.querySelector(`.paint-dir-btn[data-dir="${dir}"]`);
+  const existing = (window._rvPaintDetails || {})[_paintModalIdx] || { issues: [], sides: [] };
+  if (!window._rvPaintDetails) window._rvPaintDetails = {};
+  if (!window._rvPaintDetails[_paintModalIdx]) window._rvPaintDetails[_paintModalIdx] = { issues: [], sides: [] };
+  const sides = window._rvPaintDetails[_paintModalIdx].sides;
+  if (sides.includes(dir)) {
+    window._rvPaintDetails[_paintModalIdx].sides = sides.filter(d => d !== dir);
+    btn && btn.classList.remove('active');
+  } else {
+    sides.push(dir);
+    btn && btn.classList.add('active');
+  }
 }
 
 function confirmPaintModal() {
   const issues = ['Faded Paint','Peeling Paint','Chipped Paint'].filter(issue =>
     document.getElementById('pi_' + issue.replace(' ','_')).checked
   );
-  const activeBtn = document.querySelector('.paint-dir-btn.active');
-  const side = activeBtn ? activeBtn.dataset.dir : '';
+  const sides = (window._rvPaintDetails && window._rvPaintDetails[_paintModalIdx])
+    ? window._rvPaintDetails[_paintModalIdx].sides : [];
+  if (!issues.length) { alert('Please select at least one paint issue.'); return; }
+  if (!sides.length) { alert('Please select at least one part of the house.'); return; }
   if (!window._rvPaintDetails) window._rvPaintDetails = {};
-  window._rvPaintDetails[_paintModalIdx] = { issues, side };
+  window._rvPaintDetails[_paintModalIdx] = { issues, sides };
   document.getElementById('ovPaintDetail').classList.remove('on');
   _applyStopStatus(_paintModalIdx, 'Not Home');
 }
@@ -1704,7 +1738,7 @@ function saveReview() {
     }
     if (window._rvPaintDetails && window._rvPaintDetails[i]) {
       s.paintIssues = window._rvPaintDetails[i].issues;
-      s.paintSide   = window._rvPaintDetails[i].side;
+      s.paintSides  = window._rvPaintDetails[i].sides;
     }
   });
   window._rvStatuses = {};
@@ -1726,7 +1760,7 @@ async function autoSendNotHomeStops(route) {
   if (!toSend.length) return;
   const rows = toSend.map(s => {
     const parts = (s.city || '').split(', ');
-    return { address: s.street, city: parts[0] || '', zip: parts[2] || parts[1] || '', paintIssue: (s.paintIssues || []).join(', '), side: s.paintSide || '' };
+    return { address: s.street, city: parts[0] || '', zip: parts[2] || parts[1] || '', paintIssue: (s.paintIssues || []).join(', '), side: buildSidePhrase(s.paintSides || []) };
   });
   try {
     await fetch(SHEETS_URL, {
@@ -1781,7 +1815,7 @@ async function sendToGoogleSheets() {
 
   const rows = unsent.map(s => {
     const parts = (s.city || '').split(', ');
-    return { address: s.street, city: parts[0] || '', zip: parts[2] || parts[1] || '', paintIssue: (s.paintIssues || []).join(', '), side: s.paintSide || '' };
+    return { address: s.street, city: parts[0] || '', zip: parts[2] || parts[1] || '', paintIssue: (s.paintIssues || []).join(', '), side: buildSidePhrase(s.paintSides || []) };
   });
 
   try {
@@ -1912,7 +1946,7 @@ function renderReport() {
       <div class="rr-addr">
         <div class="rr-street">${x(s.street)}</div>
         <div class="rr-city">${x(s.city)}</div>
-        ${s.paintIssues && s.paintIssues.length ? `<div class="rr-note">🎨 ${x(s.paintIssues.join(', '))}${s.paintSide ? ' — ' + x(s.paintSide) + ' side' : ''}</div>` : ''}
+        ${s.paintIssues && s.paintIssues.length ? `<div class="rr-note">🎨 ${x(s.paintIssues.join(', '))}${s.paintSides && s.paintSides.length ? ' — ' + x(buildSidePhrase(s.paintSides)) : ''}</div>` : ''}
         ${s.note ? `<div class="rr-note">📝 ${x(s.note)}</div>` : ''}
         <div class="rr-route">📂 ${x(s.routeName)} &nbsp;·&nbsp; 👤 ${x(s.canvasser)} &nbsp;·&nbsp; 📅 ${s.routeDate}${s.startTime ? ` &nbsp;·&nbsp; ⏱ ${s.startTime}${s.endTime?' – '+s.endTime:''}` : ''}</div>
       </div>
