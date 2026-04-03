@@ -78,6 +78,14 @@
     .status-btn-clear { width: 100%; padding: 13px 16px; background: #f9fafb; border: 1.5px solid #e5e7eb; border-radius: 10px; font-size: 14px; color: #6b7280; cursor: pointer; margin-top: 2px; }
     .status-btn-clear:active { background: #f3f4f6; }
 
+    /* ── PAINT DETAIL VIEW ── */
+    .paint-toggle-btn { width: 100%; padding: 15px 16px; margin-bottom: 8px; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; text-align: left; border: 2px solid #e5e7eb; background: #f9fafb; color: #374151; transition: all .12s; }
+    .paint-toggle-btn.selected { background: #fef3c7; border-color: #d97706; color: #92400e; }
+    .paint-dir-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 0 4px; }
+    .cdir-btn { padding: 14px 4px; border: 2px solid #e5e7eb; border-radius: 10px; background: #f9fafb; color: #374151; font-size: 14px; font-weight: 700; cursor: pointer; text-align: center; transition: all .12s; }
+    .cdir-btn.active { background: #d97706; border-color: #d97706; color: #fff; }
+    .cdir-none { font-size: 12px; color: #9ca3af; }
+
     /* ── EMPTY / LOADING ── */
     .empty-msg { text-align: center; padding: 60px 24px; color: #9ca3af; font-size: 15px; line-height: 1.7; }
 
@@ -200,6 +208,33 @@
       <div style="padding: 0 16px 0;" id="statusBtns"></div>
       <div style="padding: 6px 16px 0;">
         <button class="status-btn-clear" onclick="commitStatus('')">✕ Clear Status</button>
+      </div>
+    </div>
+
+    <!-- VIEW 3: Paint detail form -->
+    <div id="paintDetailView" style="display:none;">
+      <div class="sheet-section">
+        <div style="font-size:16px;font-weight:700;color:#1a2744;margin-bottom:16px;">🎨 Any Paint Issues?</div>
+        <label class="sheet-label">PAINT ISSUES (select all that apply)</label>
+        <button class="paint-toggle-btn" id="btnFadedPaint" onclick="togglePaintIssue('Faded Paint')">Faded Paint</button>
+        <button class="paint-toggle-btn" id="btnPeelingPaint" onclick="togglePaintIssue('Peeling Paint')">Peeling Paint</button>
+        <label class="sheet-label" style="margin-top:14px;display:block;">WHICH SIDE OF THE HOUSE?</label>
+        <div class="paint-dir-grid">
+          <button class="cdir-btn" data-dir="NW" onclick="setPaintDirC('NW')">NW</button>
+          <button class="cdir-btn" data-dir="N"  onclick="setPaintDirC('N')">N</button>
+          <button class="cdir-btn" data-dir="NE" onclick="setPaintDirC('NE')">NE</button>
+          <button class="cdir-btn" data-dir="W"  onclick="setPaintDirC('W')">W</button>
+          <button class="cdir-btn cdir-none" data-dir="" onclick="setPaintDirC('')">None</button>
+          <button class="cdir-btn" data-dir="E"  onclick="setPaintDirC('E')">E</button>
+          <button class="cdir-btn" data-dir="SW" onclick="setPaintDirC('SW')">SW</button>
+          <button class="cdir-btn" data-dir="S"  onclick="setPaintDirC('S')">S</button>
+          <button class="cdir-btn" data-dir="SE" onclick="setPaintDirC('SE')">SE</button>
+        </div>
+      </div>
+      <div style="padding: 0 16px 16px; display:flex; flex-direction:column; gap:8px;">
+        <button id="submitPaintBtn" onclick="submitPaintDetail()" style="width:100%;padding:15px;background:#d97706;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">Submit to Mail →</button>
+        <button onclick="skipPaintDetail()" style="width:100%;padding:13px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;color:#6b7280;cursor:pointer;">Skip — No Issues</button>
+        <button onclick="backToStatusPicker()" style="width:100%;padding:13px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;color:#6b7280;cursor:pointer;">← Back</button>
       </div>
     </div>
 
@@ -418,6 +453,7 @@ function renderDetailStops() {
         <div class="stop-street">${x(s.street)}</div>
         <div class="stop-city">${x(s.city)}</div>
         ${s.note ? `<div class="stop-note">📝 ${x(s.note)}</div>` : ''}
+        ${s.paintIssues && s.paintIssues.length ? `<div class="stop-note">🎨 ${x(s.paintIssues.join(', '))}${s.paintSide ? ' — ' + x(s.paintSide) : ''}${s.mailSent ? ' ✉' : ''}</div>` : ''}
       </div>
       <div class="stop-right">
         ${opt
@@ -468,14 +504,18 @@ function openStatusPicker(idx) {
   // Always start on status view
   document.getElementById('statusView').style.display = 'block';
   document.getElementById('leadFormView').style.display = 'none';
+  document.getElementById('paintDetailView').style.display = 'none';
   pendingLeadStatus = null;
 
   const btnsEl = document.getElementById('statusBtns');
   btnsEl.innerHTML = STATUS_OPTS.map(o => {
     const isSelected = stop.status === o.val;
     const isLead = o.val === 'Lead' || o.val === 'Lead Contact Later';
+    const isNotHome = o.val === 'Not Home';
     const handler = isLead
       ? `showLeadForm('${o.val.replace(/'/g, "\\'")}')`
+      : isNotHome
+      ? `showPaintForm()`
       : `commitStatus('${o.val.replace(/'/g, "\\'")}')`;
     return `<button
       class="status-btn${isSelected ? ' selected' : ''}"
@@ -506,6 +546,7 @@ function backToStatusPicker() {
   pendingLeadStatus = null;
   document.getElementById('statusView').style.display = 'block';
   document.getElementById('leadFormView').style.display = 'none';
+  document.getElementById('paintDetailView').style.display = 'none';
 }
 
 function sheetOverlayClick(e) {
@@ -516,6 +557,7 @@ function closeStatusPicker() {
   document.getElementById('statusSheet').classList.remove('on');
   document.getElementById('statusView').style.display = 'block';
   document.getElementById('leadFormView').style.display = 'none';
+  document.getElementById('paintDetailView').style.display = 'none';
   pendingLeadStatus = null;
   pickingStopIdx = null;
 }
@@ -574,6 +616,91 @@ async function submitLead() {
 
   btn.textContent = '🏆 Submit Lead';
   btn.disabled = false;
+}
+
+const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbw9Y-qGeB25MBgCKxS0u1GD9dK-SDkYgTNItVi-gIgrcWulQYZinBwxfWKPjOB55RcPfw/exec';
+let _paintIssues = [];
+let _paintDir = '';
+
+function showPaintForm() {
+  _paintIssues = [];
+  _paintDir = '';
+  document.getElementById('btnFadedPaint').classList.remove('selected');
+  document.getElementById('btnPeelingPaint').classList.remove('selected');
+  document.querySelectorAll('.cdir-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('statusView').style.display = 'none';
+  document.getElementById('paintDetailView').style.display = 'block';
+}
+
+function togglePaintIssue(issue) {
+  const id = issue === 'Faded Paint' ? 'btnFadedPaint' : 'btnPeelingPaint';
+  const btn = document.getElementById(id);
+  if (_paintIssues.includes(issue)) {
+    _paintIssues = _paintIssues.filter(i => i !== issue);
+    btn.classList.remove('selected');
+  } else {
+    _paintIssues.push(issue);
+    btn.classList.add('selected');
+  }
+}
+
+function setPaintDirC(dir) {
+  _paintDir = dir;
+  document.querySelectorAll('.cdir-btn').forEach(b => b.classList.toggle('active', b.dataset.dir === dir));
+}
+
+async function submitPaintDetail() {
+  if (!_paintIssues.length) {
+    alert('Please select at least one paint issue, or tap Skip if there are none.');
+    return;
+  }
+  const btn = document.getElementById('submitPaintBtn');
+  btn.textContent = 'Sending…';
+  btn.disabled = true;
+
+  const stop = (currentRoute.stops || [])[pickingStopIdx];
+  const parts = (stop ? stop.city || '' : '').split(', ');
+  const rows = [{ address: stop.street, city: parts[0] || '', zip: parts[2] || parts[1] || '', paintIssue: _paintIssues.join(', '), side: _paintDir }];
+
+  try {
+    await fetch(SHEETS_URL, {
+      method: 'POST', mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ sheetName: 'Not Home', rows })
+    });
+  } catch(e) { console.warn('Sheets send failed:', e); }
+
+  // Save status + paint details + mailSent to Firestore
+  await commitNotHome(_paintIssues, _paintDir, true);
+
+  btn.textContent = 'Submit to Mail →';
+  btn.disabled = false;
+}
+
+function skipPaintDetail() {
+  commitNotHome([], '', false);
+}
+
+async function commitNotHome(paintIssues, paintSide, mailSent) {
+  if (!currentRoute || pickingStopIdx === null) return;
+  const idx = pickingStopIdx;
+  const note = document.getElementById('sheetNote').value.trim();
+  closeStatusPicker();
+
+  const stops = JSON.parse(JSON.stringify(currentRoute.stops || []));
+  if (!stops[idx]) return;
+  stops[idx].status = 'Not Home';
+  stops[idx].note = note;
+  stops[idx].paintIssues = paintIssues;
+  stops[idx].paintSide = paintSide;
+  stops[idx].mailSent = mailSent;
+
+  try {
+    await db.collection('routes').doc(String(currentRoute.id)).update({ stops });
+  } catch(e) {
+    alert('Failed to save. Check your connection and try again.');
+    console.error(e);
+  }
 }
 
 async function commitStatus(val) {
