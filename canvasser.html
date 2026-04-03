@@ -659,6 +659,20 @@ let _paintIssues = [];
 let _paintDirs = [];
 let _paintSheetName = 'Not Home';
 
+function buildIssuePhrase(issues) {
+  if (!issues || !issues.length) return '';
+  const key = [...issues].sort().join('|');
+  return {
+    'Faded Paint':                              'your home may be starting to fade a bit',
+    'Peeling Paint':                            'the paint looks like it may be starting to peel',
+    'Chipped Paint':                            'the paint looks like it may be starting to chip',
+    'Faded Paint|Peeling Paint':                'the paint looks like it may be starting to fade and peel a bit',
+    'Chipped Paint|Faded Paint':                'looks like it may be starting to fade and chip a bit',
+    'Chipped Paint|Peeling Paint':              'may be starting to peel and chip',
+    'Chipped Paint|Faded Paint|Peeling Paint':  'looks like it may be starting to fade, chip, and peel',
+  }[key] || issues.join(', ');
+}
+
 function buildSidePhrase(parts) {
   if (!parts || !parts.length) return '';
   const homeParts = parts.filter(p => p !== 'Garage');
@@ -726,7 +740,7 @@ async function submitPaintDetail() {
 
   const stop = (currentRoute.stops || [])[pickingStopIdx];
   const cityParts = (stop ? stop.city || '' : '').split(', ');
-  const rows = [{ address: stop.street, city: cityParts[0] || '', zip: cityParts[2] || cityParts[1] || '', paintIssue: _paintIssues.join(', '), side: buildSidePhrase(_paintDirs) }];
+  const rows = [{ address: stop.street, city: cityParts[0] || '', zip: cityParts[2] || cityParts[1] || '', paintIssue: buildIssuePhrase(_paintIssues), side: buildSidePhrase(_paintDirs) }];
 
   try {
     await fetch(SHEETS_URL, {

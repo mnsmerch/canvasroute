@@ -1652,6 +1652,20 @@ function openPaintModal(idx) {
   document.getElementById('ovPaintDetail').classList.add('on');
 }
 
+function buildIssuePhrase(issues) {
+  if (!issues || !issues.length) return '';
+  const key = [...issues].sort().join('|');
+  return {
+    'Faded Paint':                              'your home may be starting to fade a bit',
+    'Peeling Paint':                            'the paint looks like it may be starting to peel',
+    'Chipped Paint':                            'the paint looks like it may be starting to chip',
+    'Faded Paint|Peeling Paint':                'the paint looks like it may be starting to fade and peel a bit',
+    'Chipped Paint|Faded Paint':                'looks like it may be starting to fade and chip a bit',
+    'Chipped Paint|Peeling Paint':              'may be starting to peel and chip',
+    'Chipped Paint|Faded Paint|Peeling Paint':  'looks like it may be starting to fade, chip, and peel',
+  }[key] || issues.join(', ');
+}
+
 function buildSidePhrase(parts) {
   if (!parts || !parts.length) return '';
   const homeParts = parts.filter(p => p !== 'Garage');
@@ -1760,7 +1774,7 @@ async function autoSendNotHomeStops(route) {
   if (!toSend.length) return;
   const rows = toSend.map(s => {
     const parts = (s.city || '').split(', ');
-    return { address: s.street, city: parts[0] || '', zip: parts[2] || parts[1] || '', paintIssue: (s.paintIssues || []).join(', '), side: buildSidePhrase(s.paintSides || []) };
+    return { address: s.street, city: parts[0] || '', zip: parts[2] || parts[1] || '', paintIssue: buildIssuePhrase(s.paintIssues || []), side: buildSidePhrase(s.paintSides || []) };
   });
   try {
     await fetch(SHEETS_URL, {
@@ -1815,7 +1829,7 @@ async function sendToGoogleSheets() {
 
   const rows = unsent.map(s => {
     const parts = (s.city || '').split(', ');
-    return { address: s.street, city: parts[0] || '', zip: parts[2] || parts[1] || '', paintIssue: (s.paintIssues || []).join(', '), side: buildSidePhrase(s.paintSides || []) };
+    return { address: s.street, city: parts[0] || '', zip: parts[2] || parts[1] || '', paintIssue: buildIssuePhrase(s.paintIssues || []), side: buildSidePhrase(s.paintSides || []) };
   });
 
   try {
