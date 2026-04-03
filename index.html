@@ -1067,13 +1067,14 @@ function renderSavedRoutes() {
     const total = (r.stops || []).length;
     const pct = total ? Math.round(done/total*100) : 0;
     const live = liveTrackingData[String(r.id)];
+    const isCompleted = r.completed || pct === 100;
     return `
     <div class="sr-item" id="src_${r.id}">
       <div class="sr-top">
         <div style="flex:1;">
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="sr-name">${x(r.name)}</div>
-            ${live ? `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;background:#dcfce7;color:#15803d;">🟢 LIVE</span>` : ''}
+            ${isCompleted ? `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;background:#dbeafe;color:#1d4ed8;">✔ Completed</span>` : (live ? `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;background:#dcfce7;color:#15803d;">🟢 LIVE</span>` : '')}
             <button onclick="renameRoute(${r.id})" style="background:none;border:1px solid #d4cfc5;border-radius:3px;font-size:10px;padding:1px 6px;cursor:pointer;color:#6b7280;" title="Rename">✏️ Rename</button>
           </div>
           <div class="sr-meta" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
@@ -1088,7 +1089,7 @@ function renderSavedRoutes() {
           <div class="sr-meta" style="margin-top:3px;">
             <span style="color:#4b5563;">${r.stops.slice(0,2).map(s => s.street).join(', ')}${r.stops.length > 2 ? ` + ${r.stops.length - 2} more` : ''}</span>
           </div>
-          ${live ? `<div style="margin-top:5px;font-size:11px;color:#059669;font-weight:700;">📍 ${x(live.canvasser)} is on stop ${live.stopIdx+1}: ${x(live.stopAddr)} <span style="color:#9ca3af;font-weight:400;font-size:10px;">(${timeAgo(live.updatedAt)})</span></div>` : ''}
+          ${!isCompleted && live ? `<div style="margin-top:5px;font-size:11px;color:#059669;font-weight:700;">📍 ${x(live.canvasser)} is on stop ${live.stopIdx+1}: ${x(live.stopAddr)} <span style="color:#9ca3af;font-weight:400;font-size:10px;">(${timeAgo(live.updatedAt)})</span></div>` : ''}
           ${done > 0 ? `<div style="margin-top:4px;font-size:10px;color:#6b3fa0;font-weight:700;">✅ ${done}/${total} stops reviewed (${pct}%)</div>` : ''}
         </div>
       </div>
@@ -1098,6 +1099,7 @@ function renderSavedRoutes() {
         <button class="btn bo" onclick="loadRouteForEdit(${r.id})">✏️ Edit Route</button>
         <button class="btn bh" style="color:var(--navy);border-color:var(--rule);background:#e0f2fe;border-color:#0284c7;color:#075985;" onclick="openSplitRoute(${r.id})">✂️ Split Route</button>
         <button class="btn bh" style="color:var(--navy);border-color:var(--rule);" onclick="focusSaved(${r.id})">🗺️ Show on Map</button>
+        ${r.completed ? `<button class="btn bh" style="background:#fef9c3;border-color:#ca8a04;color:#854d0e;" onclick="unmarkRouteCompleted(${r.id})">↩ Undo Completed</button>` : `<button class="btn bh" style="background:#dbeafe;border-color:#2563eb;color:#1e40af;" onclick="markRouteCompleted(${r.id})">✔ Mark Completed</button>`}
         <button class="btn br" onclick="deleteSaved(${r.id})">🗑 Delete</button>
       </div>
     </div>`;
@@ -1121,6 +1123,24 @@ function deleteSaved(id) {
   if (!confirm(`Delete "${route.name}"? This cannot be undone.`)) return;
   putSavedRoutes(routes.filter(r => r.id !== id));
   loadPastMarkersFromStorage();
+  renderSavedRoutes();
+}
+
+function markRouteCompleted(id) {
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === id);
+  if (!route) return;
+  route.completed = true;
+  putSavedRoutes(routes);
+  renderSavedRoutes();
+}
+
+function unmarkRouteCompleted(id) {
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === id);
+  if (!route) return;
+  route.completed = false;
+  putSavedRoutes(routes);
   renderSavedRoutes();
 }
 
