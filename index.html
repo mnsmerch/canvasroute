@@ -178,6 +178,21 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 .rv-btn.active.s-renting     { background: #0284c7; border-color: #0284c7; color: #fff; }
 .rv-btn.active.s-painted     { background: #b45309; border-color: #b45309; color: #fff; }
 
+/* REVIEW FILTER CHIPS */
+.rv-filter-chip { padding: 5px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; cursor: pointer; border: 1.5px solid #d1d5db; background: #f9fafb; color: #374151; transition: all .12s; white-space: nowrap; }
+.rv-filter-chip .rv-filter-count { display: inline-block; background: #e5e7eb; color: #374151; border-radius: 10px; padding: 0 5px; font-size: 10px; margin-left: 3px; }
+.rv-filter-chip.active { background: #1a2744; border-color: #1a2744; color: #fff; }
+.rv-filter-chip.active .rv-filter-count { background: rgba(255,255,255,.25); color: #fff; }
+.rv-filter-chip.active.s-lead       { background: #16a34a; border-color: #16a34a; }
+.rv-filter-chip.active.s-later      { background: #7c3aed; border-color: #7c3aed; }
+.rv-filter-chip.active.s-not-home   { background: #d97706; border-color: #d97706; }
+.rv-filter-chip.active.s-not-int    { background: #dc2626; border-color: #dc2626; }
+.rv-filter-chip.active.s-busy       { background: #475569; border-color: #475569; }
+.rv-filter-chip.active.s-no-sol     { background: #db2777; border-color: #db2777; }
+.rv-filter-chip.active.s-wrong-addr { background: #6b7280; border-color: #6b7280; }
+.rv-filter-chip.active.s-renting    { background: #0284c7; border-color: #0284c7; }
+.rv-filter-chip.active.s-painted    { background: #b45309; border-color: #b45309; }
+
 /* NEW STATUS COLORS */
 
 
@@ -1565,6 +1580,7 @@ function openReview(id) {
   reviewRouteId = id;
   window._rvStatuses = {};
   window._rvPaintDetails = {};
+  window._rvActiveFilter = '';
   const routes = getSavedRoutes();
   const route = routes.find(r => r.id === id);
   if (!route) return;
@@ -1591,6 +1607,7 @@ function openReview(id) {
         <div class="time-calc" id="durationLabel">${route.startTime && route.endTime ? calcDurationStr(route.startTime, route.endTime) : '— duration —'}</div>
       </div>
     </div>
+    <div id="rvSummaryBar"></div>
     ${route.stops.map((s, i) => {
       const cur = s.status || '';
       return `<div class="rv-item ${cur ? 'has-status' : ''}" id="rvi_${i}">
@@ -1614,6 +1631,7 @@ function openReview(id) {
 
   closeSavedRoutes();
   document.getElementById('ovReview').classList.add('on');
+  refreshReviewSummary();
 }
 
 let _paintModalIdx = null;
@@ -1638,6 +1656,65 @@ function _applyStopStatus(idx, val) {
     const isActive = val === o.val;
     return `<button class="rv-btn s-${o.cls}${isActive ? ' active' : ''}" onclick="setStopStatus(${idx}, '${o.val}')">${o.label}</button>`;
   }).join('') + paintTag + (val ? `<button class="rv-btn" style="color:#999;border-color:#ddd;" onclick="setStopStatus(${idx}, '')">✕ Clear</button>` : '');
+
+  // Update summary counts and re-apply active filter to this row
+  refreshReviewSummary();
+  const activeFilter = window._rvActiveFilter || '';
+  if (activeFilter) row.style.display = (val === activeFilter) ? '' : 'none';
+}
+
+function refreshReviewSummary() {
+  const bar = document.getElementById('rvSummaryBar');
+  if (!bar) return;
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === reviewRouteId);
+  if (!route) return;
+
+  const counts = {};
+  STATUS_OPTS.filter(o => o.val).forEach(o => counts[o.val] = 0);
+  route.stops.forEach((s, i) => {
+    const eff = (window._rvStatuses && window._rvStatuses[i] !== undefined)
+      ? window._rvStatuses[i]
+      : (s.status || '');
+    if (eff && counts[eff] !== undefined) counts[eff]++;
+  });
+
+  const total = route.stops.length;
+  const active = window._rvActiveFilter || '';
+  const hasAny = STATUS_OPTS.some(o => o.val && counts[o.val] > 0);
+
+  const chips = STATUS_OPTS.filter(o => o.val && counts[o.val] > 0).map(o => {
+    const isActive = active === o.val;
+    return `<button class="rv-filter-chip s-${o.cls}${isActive ? ' active' : ''}" data-filter="${o.val}" onclick="filterReview('${o.val}')">${o.label} <span class="rv-filter-count">${counts[o.val]}</span></button>`;
+  }).join('');
+
+  const allActive = active === '';
+  bar.innerHTML = `
+    <div style="background:#f8f7ff;border:1px solid #e0d9ff;border-radius:8px;padding:10px 14px;margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:700;color:#5b21b6;letter-spacing:.5px;margin-bottom:8px;">RESULTS SUMMARY — TAP TO FILTER</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <button class="rv-filter-chip${allActive ? ' active' : ''}" data-filter="" onclick="filterReview('')">All <span class="rv-filter-count">${total}</span></button>
+        ${hasAny ? chips : '<span style="font-size:11px;color:#999;">No statuses set yet</span>'}
+      </div>
+    </div>`;
+}
+
+function filterReview(val) {
+  window._rvActiveFilter = val;
+  const routes = getSavedRoutes();
+  const route = routes.find(r => r.id === reviewRouteId);
+  if (!route) return;
+
+  route.stops.forEach((s, i) => {
+    const el = document.getElementById('rvi_' + i);
+    if (!el) return;
+    const eff = (window._rvStatuses && window._rvStatuses[i] !== undefined)
+      ? window._rvStatuses[i]
+      : (s.status || '');
+    el.style.display = (!val || eff === val) ? '' : 'none';
+  });
+
+  refreshReviewSummary();
 }
 
 let _paintModalStatus = 'Not Home';
