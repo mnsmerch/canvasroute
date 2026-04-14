@@ -647,6 +647,7 @@ function timeAgo(iso) {
 let map, geocoder, polyline = null;
 let stops = [], addMode = true, idc = 0;
 let dragSrcId = null, dragAllowed = false;
+let activeStopId = null;
 document.addEventListener('mouseup', () => { dragAllowed = false; });
 let currentTab = 'sheet';
 let pastMarkers = [];   // gray markers for previously saved routes
@@ -759,6 +760,7 @@ function addStop(latLng) {
     reverseGeocode(e.latLng, id);
   });
   stops.push({ id, pos: latLng, street: 'Loading…', city: '', fullAddress: '', note: '', marker });
+  activeStopId = id;
   refreshIcons(); redrawLine(); renderList();
   reverseGeocode(latLng, id);
 }
@@ -806,6 +808,10 @@ function renderList() {
       <button class="dl" onclick="event.stopPropagation();del(${s.id})">×</button>
     </div>`).join('');
   attachDragListeners();
+  if (activeStopId !== null) {
+    const el = document.getElementById('i' + activeStopId);
+    if (el) { el.classList.add('active'); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+  }
 }
 
 function attachDragListeners() {
@@ -846,9 +852,10 @@ function saveNote(id, val) {
 }
 
 function highlight(id) {
+  activeStopId = id;
   document.querySelectorAll('.itm').forEach(e => e.classList.remove('active'));
   const el = document.getElementById('i' + id);
-  if (el) { el.classList.add('active'); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+  if (el) { el.classList.add('active'); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
   const s = stops.find(q => q.id === id);
   if (s) {
     map.setCenter(s.pos); map.setZoom(Math.max(map.getZoom(), 18));
