@@ -272,6 +272,158 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 #adminLoginScreen .al-btn { padding:14px; background:#a4cb78; color:#000; border:none; border-radius:10px; font-size:16px; font-weight:700; cursor:pointer; margin-top:4px; }
 #adminLoginScreen .al-btn:active { background:#8fb862; }
 #adminLoginScreen .al-err { color:#fca5a5; font-size:13px; text-align:center; display:none; }
+
+/* ─── MOBILE LAYOUT ─── */
+.mob-handle { display: none; }
+#mobileBar  { display: none; }
+#mobileMenu { display: none; }
+#mobileSidebarBg { display: none; }
+#mobileMBg  { display: none; }
+
+@media (max-width: 768px) {
+  /* Compact header */
+  #hdr { height: 48px; padding: 0 8px; gap: 6px; }
+  .logo { font-size: 13px; }
+  .sbox { flex: 1; max-width: none; }
+  .sbox input { font-size: 13px; padding: 5px 8px; }
+  .hr { display: none; }
+
+  /* Sidebar becomes a fixed bottom drawer */
+  #sb {
+    position: fixed !important;
+    bottom: 56px; left: 0; right: 0;
+    width: 100% !important;
+    height: 65vh;
+    z-index: 800;
+    transform: translateY(calc(100% + 60px));
+    transition: transform .3s cubic-bezier(.32,.72,0,1);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -6px 30px rgba(0,0,0,.4);
+    border-right: none !important;
+  }
+  #sb.mob-open { transform: translateY(0); }
+
+  /* Drag handle pill at top of drawer */
+  .mob-handle {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px 0 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+    border-radius: 16px 16px 0 0;
+    background: var(--navy);
+  }
+  .mob-handle-bar { width: 40px; height: 4px; background: rgba(255,255,255,.45); border-radius: 2px; }
+
+  /* Backdrop behind drawer */
+  #mobileSidebarBg {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.45);
+    z-index: 790;
+  }
+
+  /* Shift fixed status elements above bottom bar */
+  .pill { bottom: 68px; }
+  .past-legend { bottom: 68px; }
+  #syncStatus { bottom: 62px; }
+
+  /* Bottom navigation bar */
+  #mobileBar {
+    display: flex;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 56px;
+    background: var(--navy);
+    border-top: 2px solid var(--orange);
+    z-index: 900;
+    align-items: stretch;
+  }
+  .mob-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-right: 1px solid rgba(255,255,255,.1);
+    color: rgba(255,255,255,.6);
+    cursor: pointer;
+    gap: 2px;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    transition: color .12s, background .12s;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+  }
+  .mob-btn:last-child { border-right: none; }
+  .mob-btn:active { background: rgba(255,255,255,.07); color: var(--orange); }
+  .mob-btn.mob-active { color: var(--orange); }
+  .mob-icon { font-size: 18px; line-height: 1; }
+  .mob-label { font-size: 9px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; }
+  .mob-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--orange); color: #fff;
+    border-radius: 8px; padding: 1px 5px;
+    font-size: 9px; font-weight: 700;
+    min-width: 14px; line-height: 1.2;
+    vertical-align: middle; margin-left: 2px;
+  }
+
+  /* More slide-up menu */
+  #mobileMenu {
+    position: fixed;
+    bottom: 56px; left: 0; right: 0;
+    background: #1e2e50;
+    border-top: 2px solid var(--orange);
+    border-radius: 16px 16px 0 0;
+    z-index: 920;
+    padding: 6px 0 4px;
+    box-shadow: 0 -6px 28px rgba(0,0,0,.5);
+  }
+  #mobileMenu.mob-menu-open { display: block; }
+  #mobileMBg { position: fixed; inset: 0; z-index: 915; background: transparent; }
+  .mob-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 14px 22px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+    color: #fff;
+    font-size: 15px;
+    font-family: Arial, sans-serif;
+    cursor: pointer;
+    text-align: left;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mob-menu-item:last-child { border-bottom: none; }
+  .mob-menu-item:active { background: rgba(255,255,255,.08); }
+  .mob-menu-item.danger { color: #fca5a5; }
+
+  /* Make modals full-width with tighter padding on mobile */
+  .mod { width: 100vw; max-width: 100vw; max-height: 96vh; border-radius: 12px 12px 0 0; align-self: flex-end; }
+  .ov { align-items: flex-end; }
+  .mb { padding: 12px; }
+  .mf { padding: 8px 12px; gap: 6px; flex-wrap: wrap; }
+  .mf .btn { flex: 1; text-align: center; font-size: 12px; padding: 8px 6px; }
+  .mt { padding: 8px 12px; gap: 6px; }
+  .mt input[type="text"] { width: 100%; }
+
+  /* Saved routes: stack action buttons */
+  .sr-actions { flex-direction: column; align-items: stretch; }
+  .sr-actions .btn { text-align: center; }
+
+  /* Review: bigger status buttons for thumbs */
+  .rv-btn { padding: 7px 13px; font-size: 12px; }
+
+  /* Report filter wraps nicely */
+  .rpt-filters { gap: 8px; }
+  .rpt-filter select, .rpt-filter input { min-width: 0; width: 100%; }
+}
 </style>
 </head>
 <body>
@@ -317,6 +469,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 
   <div id="bdy">
     <div id="sb">
+      <div class="mob-handle" onclick="toggleMobileSidebar()"><div class="mob-handle-bar"></div></div>
       <div class="sbh">ROUTE STOPS <span class="badge" id="cnt">0</span></div>
       <div class="hint">🖱 <b>Click the map</b> to add stops. <b>Drag any pin</b> to move it — address updates automatically.</div>
       <div id="list"><div class="emp">🗺️<br><br>Search for a neighborhood above,<br>then click the map to add stops.</div></div>
@@ -338,6 +491,42 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
     </div>
   </div>
 </div><!-- end #app -->
+
+<!-- MOBILE SIDEBAR BACKDROP -->
+<div id="mobileSidebarBg" onclick="toggleMobileSidebar()"></div>
+
+<!-- MOBILE BOTTOM BAR -->
+<div id="mobileBar">
+  <button class="mob-btn" id="mobModeBtn" onclick="toggleMode()">
+    <span class="mob-icon">📌</span>
+    <span class="mob-label">Adding</span>
+  </button>
+  <button class="mob-btn" onclick="openSavedRoutes()">
+    <span class="mob-icon">📂</span>
+    <span class="mob-label">Routes</span>
+  </button>
+  <button class="mob-btn" id="mobStopsBtn" onclick="toggleMobileSidebar()">
+    <span class="mob-icon">📋</span>
+    <span class="mob-label">Stops <span class="mob-badge" id="mCnt">0</span></span>
+  </button>
+  <button class="mob-btn" id="mobMoreBtn" onclick="toggleMobileMenu()">
+    <span class="mob-icon">⋯</span>
+    <span class="mob-label">More</span>
+  </button>
+</div>
+
+<!-- MOBILE MORE MENU -->
+<div id="mobileMenu">
+  <button class="mob-menu-item" onclick="openSaveDialog();closeMobileMenu()">💾 Save Route</button>
+  <button class="mob-menu-item" onclick="openModal();closeMobileMenu()">🖨 Print Route</button>
+  <button class="mob-menu-item" onclick="openReport();closeMobileMenu()">📊 Report</button>
+  <button class="mob-menu-item" onclick="exportCSV();closeMobileMenu()">⬇ Export CSV</button>
+  <button class="mob-menu-item" onclick="forceReloadFromCloud();closeMobileMenu()">☁ Reload from Cloud</button>
+  <button class="mob-menu-item danger" onclick="clearAll();closeMobileMenu()">✕ Clear All Stops</button>
+  <button class="mob-menu-item danger" onclick="adminLogout()">🚪 Sign Out</button>
+</div>
+<!-- MOBILE MORE MENU BACKDROP -->
+<div id="mobileMBg" onclick="closeMobileMenu()"></div>
 
 <!-- PRINT MODAL -->
 <div class="ov" id="ov">
@@ -599,6 +788,43 @@ function doAdminLogin() {
   }
 }
 
+// ── MOBILE UI ─────────────────────────────────────
+function toggleMobileSidebar() {
+  const sb = document.getElementById('sb');
+  const bg = document.getElementById('mobileSidebarBg');
+  const btn = document.getElementById('mobStopsBtn');
+  const isOpen = sb.classList.toggle('mob-open');
+  bg.style.display = isOpen ? 'block' : 'none';
+  if (btn) btn.classList.toggle('mob-active', isOpen);
+}
+
+function closeMobileSidebar() {
+  const sb = document.getElementById('sb');
+  const bg = document.getElementById('mobileSidebarBg');
+  const btn = document.getElementById('mobStopsBtn');
+  sb.classList.remove('mob-open');
+  bg.style.display = 'none';
+  if (btn) btn.classList.remove('mob-active');
+}
+
+function toggleMobileMenu() {
+  const menu = document.getElementById('mobileMenu');
+  const bg = document.getElementById('mobileMBg');
+  const btn = document.getElementById('mobMoreBtn');
+  const isOpen = menu.classList.toggle('mob-menu-open');
+  bg.style.display = isOpen ? 'block' : 'none';
+  if (btn) btn.classList.toggle('mob-active', isOpen);
+}
+
+function closeMobileMenu() {
+  const menu = document.getElementById('mobileMenu');
+  const bg = document.getElementById('mobileMBg');
+  const btn = document.getElementById('mobMoreBtn');
+  menu.classList.remove('mob-menu-open');
+  bg.style.display = 'none';
+  if (btn) btn.classList.remove('mob-active');
+}
+
 function adminLogout() {
   adminAuthed = false;
   sessionStorage.removeItem('adminAuth');
@@ -789,6 +1015,8 @@ function reverseGeocode(latLng, id) {
 // ── SIDEBAR ───────────────────────────────────────
 function renderList() {
   document.getElementById('cnt').textContent = stops.length;
+  const mCnt = document.getElementById('mCnt');
+  if (mCnt) mCnt.textContent = stops.length;
   const l = document.getElementById('list');
   if (!stops.length) { l.innerHTML = '<div class="emp">🗺️<br><br>No stops yet.<br>Click the map to begin.</div>'; return; }
   l.innerHTML = stops.map((s, i) => `
@@ -883,6 +1111,12 @@ function toggleMode() {
   const b = document.getElementById('modeBtn'), p = document.getElementById('pill');
   if (addMode) { b.textContent = '📌 ADDING STOPS'; b.className = 'btn bh'; p.style.display = 'flex'; }
   else { b.textContent = '🖐 PAN MODE'; b.className = 'btn bo'; p.style.display = 'none'; }
+  const mb = document.getElementById('mobModeBtn');
+  if (mb) {
+    mb.querySelector('.mob-icon').textContent = addMode ? '📌' : '🖐';
+    mb.querySelector('.mob-label').textContent = addMode ? 'Adding' : 'Pan';
+    mb.classList.toggle('mob-active', addMode);
+  }
 }
 
 // ── SEARCH ────────────────────────────────────────
