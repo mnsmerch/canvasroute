@@ -198,9 +198,14 @@
 <div class="sheet-overlay" id="statusSheet" onclick="sheetOverlayClick(event)">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <div class="sheet-stop-num">STOP <span id="sheetStopNum"></span></div>
-    <div class="sheet-addr" id="sheetAddr"></div>
-    <div class="sheet-city" id="sheetCity"></div>
+    <div style="display:flex;align-items:flex-start;padding:0 16px 0;">
+      <div style="flex:1;min-width:0;">
+        <div class="sheet-stop-num" style="text-align:left;">STOP <span id="sheetStopNum"></span></div>
+        <div class="sheet-addr" id="sheetAddr" style="text-align:left;padding:0;"></div>
+        <div class="sheet-city" id="sheetCity" style="text-align:left;padding:0;"></div>
+      </div>
+      <button onclick="closeStatusPicker()" style="flex-shrink:0;margin-left:12px;padding:6px 14px;background:#f3f4f6;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;font-weight:700;color:#374151;cursor:pointer;">Close</button>
+    </div>
 
     <!-- VIEW 1: Status selection -->
     <div id="statusView">
