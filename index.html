@@ -463,7 +463,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
       <button class="btn bh" id="modeBtn" onclick="toggleMode()">📌 ADDING STOPS</button>
       <button class="btn bpurple" onclick="openSavedRoutes()">📂 SAVED ROUTES</button>
       <button class="btn bo" style="background:#0f766e;" onclick="openReport()">📊 REPORT</button>
-      <button class="btn bg" style="background:#16a34a;" onclick="openJobsModal()">🎨 Jobs</button>
+      <button class="btn bg" style="background:#16a34a;" onclick="openJobsModal()">Jobs</button>
       <button class="btn bg" onclick="openModal()">🖨 PRINT</button>
       <button class="btn br" onclick="clearAll()">✕ CLEAR</button>
       <button class="btn bh" style="color:#6b7280;border-color:var(--rule);" onclick="adminLogout()">Sign Out</button>
@@ -720,13 +720,13 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 <!-- COMPLETED JOBS MODAL -->
 <div class="ov" id="ovJobs">
   <div class="mod" style="max-width:620px;">
-    <div class="mh">🎨 Completed Jobs <button onclick="closeJobsModal()">×</button></div>
+    <div class="mh">Completed Jobs <button onclick="closeJobsModal()">×</button></div>
     <div class="mt" style="flex-wrap:wrap;gap:8px;">
       <div style="width:100%;font-size:11px;color:#6b7280;">Add a job manually or import from a Google Maps Easy CSV export.</div>
       <input type="text" id="jobDesc" placeholder="Description — e.g. 2026 Painted Exterior" style="flex:1;min-width:180px;">
       <input type="text" id="jobAddr" placeholder="Address — e.g. 4125 Suncrest Dr, Fort Collins, CO" style="flex:2;min-width:220px;">
       <button class="btn bg" style="background:#16a34a;" onclick="addJobManually()">+ Add</button>
-      <label class="btn bh" style="color:var(--ink);border-color:var(--rule);cursor:pointer;text-align:center;">📥 Import CSV<input type="file" accept=".csv,.txt" style="display:none;" onchange="importJobsCSV(this)"></label>
+      <label class="btn bh" style="color:var(--ink);border-color:var(--rule);cursor:pointer;text-align:center;">Import CSV<input type="file" accept=".csv,.txt" style="display:none;" onchange="importJobsCSV(this)"></label>
     </div>
     <div class="mb" id="mbJobs" style="padding:0;"></div>
     <div class="mf">
@@ -1041,7 +1041,7 @@ function renderJobMarkers() {
     m.addListener('click', () => {
       jobInfoWindow.setContent(
         `<div style="font-family:Arial,sans-serif;padding:4px 2px;max-width:230px;">` +
-        `<div style="font-weight:700;font-size:13px;color:#15803d;margin-bottom:4px;">🎨 ${job.description}</div>` +
+        `<div style="font-weight:700;font-size:13px;color:#15803d;margin-bottom:4px;">${job.description}</div>` +
         `<div style="font-size:12px;color:#374151;">${job.address}</div>` +
         `</div>`
       );
@@ -1105,7 +1105,7 @@ function renderJobsList() {
   mb.innerHTML = completedJobs.map(j => `
     <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 16px;border-bottom:1px solid #e5e7eb;">
       <div style="flex:1;min-width:0;">
-        <div style="font-weight:700;font-size:13px;color:#15803d;">🎨 ${x(j.description)}</div>
+        <div style="font-weight:700;font-size:13px;color:#15803d;">${x(j.description)}</div>
         <div style="font-size:12px;color:#6b7280;margin-top:2px;">${x(j.address)}</div>
       </div>
       <button class="btn br" style="font-size:11px;padding:4px 9px;flex-shrink:0;" onclick="deleteJob(${j.id})">Delete</button>
@@ -1341,7 +1341,7 @@ function renderList() {
     const nearJobs = (s.pos && completedJobs.length)
       ? findJobsNear(s.pos.lat(), s.pos.lng()) : [];
     const jobBadge = nearJobs.length
-      ? `<div class="job-badge">🎨 ${nearJobs.map(j => x(j.description)).join(' · ')}</div>` : '';
+      ? `<div class="job-badge">${nearJobs.map(j => x(j.description)).join(' · ')}</div>` : '';
     return `
     <div class="itm" id="i${s.id}" draggable="true">
       <div class="drag-handle" onmousedown="dragAllowed=true" title="Drag to reorder">⠿</div>
