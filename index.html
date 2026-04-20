@@ -1173,20 +1173,25 @@ function importJobsCSV(input) {
       const cols = parseCSVLine(line);
 
       // ── Format A: Google Sheets re-export (comma-delimited, semicolons embedded) ──
-      // Field 0 contains: 5112;"5";"2026 Painted Exterior";"<p>street
-      // Field 1: city, Field 2: state+zip
-      // Field 3 contains: USA</p>";"lat";"lng";"street
-      if (cols.length >= 3) {
+      // col0: 5112;"5";"desc";"<p>street  col1: city  col2: state+zip
+      // col3: USA</p>";"lat";"lng";"plain street  col4: city  col5: state+zip
+      if (cols.length >= 4) {
+        // Description: col0, 3rd semicolon segment
         const f0parts = cols[0].split(';').map(p => p.replace(/^"+|"+$/g, '').trim());
         const description = f0parts[2] || '';
-        // Lat/lng: find all decimal numbers with 4+ decimal places in the raw line
+
+        // Coordinates via regex (most reliable)
         const coords = [...line.matchAll(/([-]?\d{2,3}\.\d{4,})/g)].map(m => parseFloat(m[1]));
         const lat = coords[0], lng = coords[1];
-        // Street from f0parts[3], city/state from CSV columns 1 & 2
-        const street = stripHtml(f0parts[3] || '');
-        const city = (cols[1] || '').trim();
-        const stateZip = (cols[2] || '').trim();
+
+        // Plain street: col3 last semicolon segment (no HTML)
+        const f3parts = cols[3].split(';').map(p => p.replace(/^"+|"+$/g, '').trim());
+        const street = f3parts[f3parts.length - 1] || '';
+        // City and state come from cols 4 & 5 (next to the plain address)
+        const city = (cols[4] || cols[1] || '').trim();
+        const stateZip = (cols[5] || cols[2] || '').trim();
         const address = [street, city, stateZip].filter(Boolean).join(', ');
+
         if (description && lat !== undefined && lng !== undefined && !isNaN(lat) && !isNaN(lng)) {
           jobs.push({ id: Date.now() + jobs.length, description, address, lat, lng });
           continue;
