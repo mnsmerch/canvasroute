@@ -1138,8 +1138,8 @@ async function addJobManually() {
   });
 }
 
-// Parse a single CSV line respecting quoted fields and escaped quotes ("")
-function parseCSVLine(line) {
+// Parse a delimited line respecting quoted fields and escaped quotes ("")
+function parseDelimitedLine(line, delim) {
   const result = [];
   let cur = '', inQ = false;
   for (let i = 0; i < line.length; i++) {
@@ -1147,7 +1147,7 @@ function parseCSVLine(line) {
     if (c === '"') {
       if (inQ && line[i + 1] === '"') { cur += '"'; i++; } // escaped quote
       else inQ = !inQ;
-    } else if (c === ',' && !inQ) {
+    } else if (c === delim && !inQ) {
       result.push(cur); cur = '';
     } else {
       cur += c;
@@ -1156,6 +1156,9 @@ function parseCSVLine(line) {
   result.push(cur);
   return result;
 }
+
+function parseCSVLine(line)        { return parseDelimitedLine(line, ','); }
+function parseSemicolonLine(line)  { return parseDelimitedLine(line, ';'); }
 
 function stripHtml(s) {
   return s.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/<[^>]*>/g,'').trim();
@@ -1186,7 +1189,7 @@ function importJobsCSV(input) {
       // col3: USA</p>";"lat";"lng";"plain street  col4: city  col5: state+zip
       if (cols.length >= 4) {
         // Description: col0, 3rd semicolon segment
-        const f0parts = cols[0].split(';').map(p => p.replace(/^"+|"+$/g, '').trim());
+        const f0parts = parseSemicolonLine(cols[0]).map(p => p.trim());
         const description = decodeHtml(f0parts[2] || '');
 
         // Coordinates via regex (most reliable)
@@ -1208,7 +1211,7 @@ function importJobsCSV(input) {
       }
 
       // ── Format B: original semicolon-delimited Google Maps Easy export ──
-      const parts = line.split(';').map(p => p.trim().replace(/^"(.*)"$/, '$1'));
+      const parts = parseSemicolonLine(line).map(p => p.trim().replace(/^"(.*)"$/, '$1'));
       if (parts.length >= 6) {
         const description = parts[2] ? decodeHtml(parts[2].trim()) : '';
         const lat = parseFloat(parts[4]);
