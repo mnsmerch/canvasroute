@@ -999,6 +999,9 @@ function doInitMap() {
   // Address autocomplete for the Completed Jobs modal
   new google.maps.places.Autocomplete(document.getElementById('jobAddr'), { types: ['address'] });
 
+  // Address autocomplete for the Edit Job modal
+  new google.maps.places.Autocomplete(document.getElementById('editJobAddr'), { types: ['address'] });
+
   map.addListener('click', e => { if (addMode) addStop(e.latLng); });
 
   // Load routes from cloud then reveal app
