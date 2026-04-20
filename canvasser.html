@@ -341,8 +341,15 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-function findJobsNear(lat, lng, radiusMeters = 30) {
+function findJobsNear(lat, lng, radiusMeters = 12) {
   return completedJobs.filter(j => haversineMeters(lat, lng, j.lat, j.lng) <= radiusMeters);
+}
+
+const dismissedJobStops = new Set();
+function dismissJobBadgeC(stopIdx, e) {
+  e.stopPropagation();
+  dismissedJobStops.add(stopIdx);
+  renderStopsList();
 }
 
 async function loadCompletedJobsC() {
@@ -500,14 +507,14 @@ function renderDetailStops() {
   listEl.innerHTML = stops.map((s, i) => {
     const isCurrent = currentRoute.liveStopIdx === i;
     const opt = STATUS_OPTS.find(o => o.val === s.status);
-    const nearJobs = (s.lat && s.lng && completedJobs.length) ? findJobsNear(s.lat, s.lng) : [];
+    const nearJobs = (s.lat && s.lng && completedJobs.length && !dismissedJobStops.has(i)) ? findJobsNear(s.lat, s.lng) : [];
     return `
     <div class="stop-item${isCurrent ? ' current' : ''}" onclick="tappedStop(${i})">
       <div class="stop-num${isCurrent ? ' current' : ''}">${i + 1}</div>
       <div class="stop-addr">
         <div class="stop-street">${x(s.street)}</div>
         <div class="stop-city">${x(s.city)}</div>
-        ${nearJobs.length ? `<div class="stop-note" style="color:#15803d;font-weight:600;">${nearJobs.map(j => x(j.description)).join(' · ')}</div>` : ''}
+        ${nearJobs.length ? `<div class="stop-note" style="color:#15803d;font-weight:600;display:flex;align-items:center;gap:6px;">${nearJobs.map(j => x(j.description)).join(' · ')}<span onclick="dismissJobBadgeC(${i}, event)" style="color:#6b7280;font-weight:400;cursor:pointer;" title="Not a match">✕</span></div>` : ''}
         ${s.note ? `<div class="stop-note">📝 ${x(s.note)}</div>` : ''}
         ${s.paintIssues && s.paintIssues.length ? `<div class="stop-note">🎨 ${x(s.paintIssues.join(', '))}${s.paintSides && s.paintSides.length ? ' — ' + x(buildSidePhrase(s.paintSides)) : ''}${s.mailSent ? ' ✉' : ''}</div>` : ''}
       </div>
