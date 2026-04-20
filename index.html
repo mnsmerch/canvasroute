@@ -1212,11 +1212,37 @@ function importJobsCSV(input) {
       }
     }
     if (!jobs.length) { alert('No valid jobs found in the CSV.'); input.value = ''; return; }
-    for (const job of jobs) await saveJobToCloud(job);
-    renderJobsList();
-    renderJobMarkers();
-    renderList();
-    alert(`✅ Imported ${jobs.length} job${jobs.length !== 1 ? 's' : ''}.`);
+
+    // Duplicate detection
+    const dupes = jobs.filter(j =>
+      completedJobs.some(e =>
+        e.description.trim().toLowerCase() === j.description.trim().toLowerCase() &&
+        haversineMeters(e.lat, e.lng, j.lat, j.lng) <= 30
+      )
+    );
+    const fresh = jobs.filter(j => !dupes.includes(j));
+
+    if (dupes.length) {
+      const dupeList = dupes.map(j => `• ${j.description} — ${j.address}`).join('\n');
+      const choice = confirm(
+        `${dupes.length} duplicate${dupes.length > 1 ? 's' : ''} found:\n\n${dupeList}\n\n` +
+        `Click OK to skip the duplicate${dupes.length > 1 ? 's' : ''} and import only the new ones.\n` +
+        `Click Cancel to stop — nothing will be imported.`
+      );
+      if (!choice) { input.value = ''; return; }
+      // Only import the non-duplicate jobs
+      if (!fresh.length) {
+        alert('All jobs in this file are already imported. Nothing added.');
+        input.value = ''; return;
+      }
+      for (const job of fresh) await saveJobToCloud(job);
+      renderJobsList(); renderJobMarkers(); renderList();
+      alert(`✅ Imported ${fresh.length} new job${fresh.length !== 1 ? 's' : ''}. ${dupes.length} duplicate${dupes.length > 1 ? 's' : ''} skipped.`);
+    } else {
+      for (const job of jobs) await saveJobToCloud(job);
+      renderJobsList(); renderJobMarkers(); renderList();
+      alert(`✅ Imported ${jobs.length} job${jobs.length !== 1 ? 's' : ''}.`);
+    }
     input.value = '';
   };
   reader.readAsText(file);
