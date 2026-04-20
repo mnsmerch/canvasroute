@@ -751,6 +751,21 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
   </div>
 </div>
 
+<!-- IMPORT REVIEW MODAL -->
+<div class="ov" id="ovImportReview">
+  <div class="mod" style="max-width:640px;">
+    <div class="mh">Review Import <button onclick="cancelImportReview()">×</button></div>
+    <div class="mb" id="mbImportReview" style="padding:0;"></div>
+    <div class="mf" style="justify-content:space-between;align-items:center;">
+      <span id="importReviewSummary" style="font-size:12px;color:var(--mid);"></span>
+      <div style="display:flex;gap:8px;">
+        <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="cancelImportReview()">Cancel</button>
+        <button class="btn bg" style="background:#16a34a;" onclick="confirmImportReview()">Import Selected</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="printTarget" style="display:none;"></div>
 
 <script>
@@ -1251,6 +1266,113 @@ async function runImportWithProgress(jobsToSave) {
   setTimeout(() => { progressWrap.style.display = 'none'; }, 1500);
 }
 
+function updateImportReviewSummary() {
+  if (!pendingImport) return;
+  const dupeChecked  = pendingImport.dupes.filter((_, i) => document.getElementById('ird_' + i)?.checked).length;
+  const errorChecked = pendingImport.errors.filter((_, i) => document.getElementById('ire_' + i)?.checked).length;
+  const total = pendingImport.fresh.length + dupeChecked + errorChecked;
+  document.getElementById('importReviewSummary').textContent =
+    `${total} job${total !== 1 ? 's' : ''} will be imported`;
+}
+
+function showImportReview() {
+  const { fresh, dupes, errors } = pendingImport;
+  const mb = document.getElementById('mbImportReview');
+  let html = '';
+
+  // Fresh jobs summary
+  if (fresh.length) {
+    html += `<div style="padding:12px 16px;background:#f0fdf4;border-bottom:1px solid #bbf7d0;">
+      <div style="font-weight:700;font-size:13px;color:#15803d;">✓ ${fresh.length} new job${fresh.length !== 1 ? 's' : ''} ready to import</div>
+    </div>`;
+  }
+
+  // Duplicates section
+  if (dupes.length) {
+    html += `<div style="padding:10px 16px 6px;background:#fffbe6;border-bottom:1px solid #fde68a;">
+      <div style="font-weight:700;font-size:13px;color:#92400e;margin-bottom:6px;">⚠ ${dupes.length} Duplicate${dupes.length !== 1 ? 's' : ''} Found</div>
+      <div style="font-size:11px;color:#78350f;margin-bottom:8px;">These jobs already exist. Check the ones you want to import again anyway.</div>
+      ${dupes.map((j, i) => `
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-top:1px solid #fde68a;cursor:pointer;">
+          <input type="checkbox" id="ird_${i}" onchange="updateImportReviewSummary()" style="margin-top:3px;flex-shrink:0;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:700;font-size:12px;color:#92400e;">${x(j.description)}</div>
+            <div style="font-size:11px;color:#78350f;margin-top:1px;">${x(j.address)}</div>
+          </div>
+        </label>`).join('')}
+    </div>`;
+  }
+
+  // Errors section
+  if (errors.length) {
+    html += `<div style="padding:10px 16px 6px;background:#fff1f2;border-bottom:1px solid #fecdd3;">
+      <div style="font-weight:700;font-size:13px;color:#be123c;margin-bottom:6px;">✕ ${errors.length} Row${errors.length !== 1 ? 's' : ''} With Errors</div>
+      <div style="font-size:11px;color:#9f1239;margin-bottom:8px;">No location found. Check the box, fix the address, and it will be geocoded on import.</div>
+      ${errors.map((j, i) => `
+        <div style="padding:7px 0;border-top:1px solid #fecdd3;">
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;">
+            <input type="checkbox" id="ire_${i}" onchange="updateImportReviewSummary()" style="margin-top:3px;flex-shrink:0;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:700;font-size:12px;color:#be123c;">${x(j.description)}</div>
+              <input type="text" id="ire_addr_${i}" value="${x(j.address)}" placeholder="Enter correct address…"
+                style="width:100%;margin-top:5px;padding:5px 8px;border:1px solid #fda4af;border-radius:4px;font-size:12px;font-family:Arial,sans-serif;">
+            </div>
+          </label>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  mb.innerHTML = html;
+  updateImportReviewSummary();
+  document.getElementById('ovImportReview').classList.add('on');
+}
+
+function cancelImportReview() {
+  document.getElementById('ovImportReview').classList.remove('on');
+  if (pendingImport?.inputRef) pendingImport.inputRef.value = '';
+  pendingImport = null;
+}
+
+async function confirmImportReview() {
+  if (!pendingImport) return;
+  const { fresh, dupes, errors } = pendingImport;
+  const toImport = [...fresh];
+
+  // Add checked duplicates
+  dupes.forEach((j, i) => {
+    if (document.getElementById('ird_' + i)?.checked) toImport.push({ ...j, id: Date.now() + i });
+  });
+
+  // Geocode and add checked error rows
+  const errorPromises = errors.map((j, i) => new Promise(resolve => {
+    if (!document.getElementById('ire_' + i)?.checked) return resolve(null);
+    const addr = document.getElementById('ire_addr_' + i)?.value.trim();
+    if (!addr) return resolve(null);
+    geocoder.geocode({ address: addr }, (results, status) => {
+      if (status !== 'OK' || !results[0]) {
+        document.getElementById('ire_addr_' + i).style.borderColor = '#dc2626';
+        resolve(null);
+      } else {
+        const pos = results[0].geometry.location;
+        resolve({ ...j, id: Date.now() + i + 5000, address: results[0].formatted_address, lat: pos.lat(), lng: pos.lng() });
+      }
+    });
+  }));
+
+  const geocoded = (await Promise.all(errorPromises)).filter(Boolean);
+  toImport.push(...geocoded);
+
+  if (!toImport.length) { alert('Nothing selected to import.'); return; }
+
+  document.getElementById('ovImportReview').classList.remove('on');
+  await runImportWithProgress(toImport);
+  renderJobsList(); renderJobMarkers(); renderList();
+  if (pendingImport?.inputRef) pendingImport.inputRef.value = '';
+  pendingImport = null;
+  const skippedDupes = dupes.length - (toImport.filter(j => dupes.some(d => d.description === j.description)).length);
+  alert(`✅ Imported ${toImport.length} job${toImport.length !== 1 ? 's' : ''}.`);
+}
+
 // Parse a delimited line respecting quoted fields and escaped quotes ("")
 function parseDelimitedLine(line, delim) {
   const result = [];
@@ -1286,41 +1408,35 @@ function decodeHtml(s) {
   return txt.value;
 }
 
+let pendingImport = null; // holds { fresh, dupes, errors, inputRef }
+
 function importJobsCSV(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = async e => {
+  reader.onload = e => {
     const text = e.target.result;
     const lines = text.trim().split('\n').filter(l => l.trim());
-    const jobs = [];
+    const jobs = [], errors = [];
     for (const line of lines) {
       const cols = parseCSVLine(line);
 
       // ── Format A: Google Sheets re-export (comma-delimited, semicolons embedded) ──
-      // col0: 5112;"5";"desc";"<p>street  col1: city  col2: state+zip
-      // col3: USA</p>";"lat";"lng";"plain street  col4: city  col5: state+zip
       if (cols.length >= 4) {
-        // Description: col0, 3rd semicolon segment
         const f0parts = parseSemicolonLine(cols[0]).map(p => p.trim());
         const description = decodeHtml(f0parts[2] || '');
-
-        // Coordinates via regex (most reliable)
         const coords = [...line.matchAll(/([-]?\d{2,3}\.\d{4,})/g)].map(m => parseFloat(m[1]));
         const lat = coords[0], lng = coords[1];
-
-        // Plain street: col3 last semicolon segment (no HTML)
         const f3parts = cols[3].split(';').map(p => p.replace(/^"+|"+$/g, '').trim());
         const street = f3parts[f3parts.length - 1] || '';
-        // City and state come from cols 4 & 5 (next to the plain address)
         const city = (cols[4] || cols[1] || '').trim();
         const stateZip = (cols[5] || cols[2] || '').trim();
         const address = [street, city, stateZip].filter(Boolean).join(', ');
-
         if (description && lat !== undefined && lng !== undefined && !isNaN(lat) && !isNaN(lng)) {
           jobs.push({ id: Date.now() + jobs.length, description, address, lat, lng });
           continue;
         }
+        if (description) { errors.push({ id: Date.now() + errors.length + 9999, description, address }); continue; }
       }
 
       // ── Format B: original semicolon-delimited Google Maps Easy export ──
@@ -1332,42 +1448,32 @@ function importJobsCSV(input) {
         const rawAddr = parts[6] || parts[3] || '';
         const address = stripHtml(rawAddr).replace(/\s+/g, ' ').trim();
         if (description && !isNaN(lat) && !isNaN(lng)) {
-          jobs.push({ id: Date.now() + jobs.length, description, address, lat, lng });
+          jobs.push({ id: Date.now() + jobs.length, description, address, lat, lng }); continue;
         }
+        if (description) errors.push({ id: Date.now() + errors.length + 9999, description, address });
       }
     }
-    if (!jobs.length) { alert('No valid jobs found in the CSV.'); input.value = ''; return; }
 
-    // Duplicate detection
-    const dupes = jobs.filter(j =>
-      completedJobs.some(e =>
-        e.description.trim().toLowerCase() === j.description.trim().toLowerCase() &&
-        haversineMeters(e.lat, e.lng, j.lat, j.lng) <= 30
-      )
-    );
+    if (!jobs.length && !errors.length) { alert('No valid jobs found in the CSV.'); input.value = ''; return; }
+
+    const dupes = jobs.filter(j => completedJobs.some(e =>
+      e.description.trim().toLowerCase() === j.description.trim().toLowerCase() &&
+      haversineMeters(e.lat, e.lng, j.lat, j.lng) <= 30
+    ));
     const fresh = jobs.filter(j => !dupes.includes(j));
 
-    if (dupes.length) {
-      const dupeList = dupes.map(j => `• ${j.description} — ${j.address}`).join('\n');
-      const choice = confirm(
-        `${dupes.length} duplicate${dupes.length > 1 ? 's' : ''} found:\n\n${dupeList}\n\n` +
-        `Click OK to skip the duplicate${dupes.length > 1 ? 's' : ''} and import only the new ones.\n` +
-        `Click Cancel to stop — nothing will be imported.`
-      );
-      if (!choice) { input.value = ''; return; }
-      if (!fresh.length) {
-        alert('All jobs in this file are already imported. Nothing added.');
-        input.value = ''; return;
-      }
-      await runImportWithProgress(fresh);
-      renderJobsList(); renderJobMarkers(); renderList();
-      alert(`✅ Imported ${fresh.length} new job${fresh.length !== 1 ? 's' : ''}. ${dupes.length} duplicate${dupes.length > 1 ? 's' : ''} skipped.`);
-    } else {
-      await runImportWithProgress(jobs);
-      renderJobsList(); renderJobMarkers(); renderList();
-      alert(`✅ Imported ${jobs.length} job${jobs.length !== 1 ? 's' : ''}.`);
+    // If no dupes or errors, import directly
+    if (!dupes.length && !errors.length) {
+      runImportWithProgress(fresh).then(() => {
+        renderJobsList(); renderJobMarkers(); renderList();
+        alert(`✅ Imported ${fresh.length} job${fresh.length !== 1 ? 's' : ''}.`);
+      });
+      input.value = ''; return;
     }
-    input.value = '';
+
+    // Show review modal
+    pendingImport = { fresh, dupes, errors, inputRef: input };
+    showImportReview();
   };
   reader.readAsText(file);
 }
