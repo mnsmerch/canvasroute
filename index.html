@@ -1138,6 +1138,29 @@ async function addJobManually() {
   });
 }
 
+// Parse a single CSV line respecting quoted fields and escaped quotes ("")
+function parseCSVLine(line) {
+  const result = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; } // escaped quote
+      else inQ = !inQ;
+    } else if (c === ',' && !inQ) {
+      result.push(cur); cur = '';
+    } else {
+      cur += c;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+function stripHtml(s) {
+  return s.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/<[^>]*>/g,'').trim();
+}
+
 function importJobsCSV(input) {
   const file = input.files[0];
   if (!file) return;
@@ -1147,21 +1170,43 @@ function importJobsCSV(input) {
     const lines = text.trim().split('\n').filter(l => l.trim());
     const jobs = [];
     for (const line of lines) {
-      // Google Maps Easy semicolon-delimited export format
+      const cols = parseCSVLine(line);
+
+      // ── Format A: Google Sheets re-export (comma-delimited, semicolons embedded) ──
+      // Field 0 contains: 5112;"5";"2026 Painted Exterior";"<p>street
+      // Field 1: city, Field 2: state+zip
+      // Field 3 contains: USA</p>";"lat";"lng";"street
+      if (cols.length >= 3) {
+        const f0parts = cols[0].split(';').map(p => p.replace(/^"+|"+$/g, '').trim());
+        const description = f0parts[2] || '';
+        // Lat/lng: find all decimal numbers with 4+ decimal places in the raw line
+        const coords = [...line.matchAll(/([-]?\d{2,3}\.\d{4,})/g)].map(m => parseFloat(m[1]));
+        const lat = coords[0], lng = coords[1];
+        // Street from f0parts[3], city/state from CSV columns 1 & 2
+        const street = stripHtml(f0parts[3] || '');
+        const city = (cols[1] || '').trim();
+        const stateZip = (cols[2] || '').trim();
+        const address = [street, city, stateZip].filter(Boolean).join(', ');
+        if (description && lat !== undefined && lng !== undefined && !isNaN(lat) && !isNaN(lng)) {
+          jobs.push({ id: Date.now() + jobs.length, description, address, lat, lng });
+          continue;
+        }
+      }
+
+      // ── Format B: original semicolon-delimited Google Maps Easy export ──
       const parts = line.split(';').map(p => p.trim().replace(/^"(.*)"$/, '$1'));
       if (parts.length >= 6) {
         const description = parts[2] ? parts[2].trim() : '';
         const lat = parseFloat(parts[4]);
         const lng = parseFloat(parts[5]);
-        // Use plain address (field 6) or strip HTML from field 3
         const rawAddr = parts[6] || parts[3] || '';
-        const address = rawAddr.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+        const address = stripHtml(rawAddr).replace(/\s+/g, ' ').trim();
         if (description && !isNaN(lat) && !isNaN(lng)) {
           jobs.push({ id: Date.now() + jobs.length, description, address, lat, lng });
         }
       }
     }
-    if (!jobs.length) { alert('No valid jobs found in the CSV. Make sure it uses the Google Maps Easy semicolon-delimited export format.'); input.value = ''; return; }
+    if (!jobs.length) { alert('No valid jobs found in the CSV.'); input.value = ''; return; }
     for (const job of jobs) await saveJobToCloud(job);
     renderJobsList();
     renderJobMarkers();
