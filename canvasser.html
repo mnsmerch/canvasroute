@@ -349,6 +349,8 @@ async function loadCompletedJobsC() {
   try {
     const snap = await db.collection('completed_jobs').orderBy('id', 'desc').get();
     completedJobs = snap.docs.map(d => d.data());
+    // Re-render stop list if a route is already showing (jobs loaded after stops)
+    if (currentRoute) renderStopsList();
   } catch(e) {
     completedJobs = [];
   }
