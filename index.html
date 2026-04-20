@@ -1161,6 +1161,15 @@ function stripHtml(s) {
   return s.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/<[^>]*>/g,'').trim();
 }
 
+function decodeHtml(s) {
+  // Use browser's HTML parser to decode entities (handles &amp;amp; double-encoding too)
+  const txt = document.createElement('textarea');
+  txt.innerHTML = s;
+  const once = txt.value;
+  txt.innerHTML = once; // decode a second time for double-encoded values like &amp;amp;
+  return txt.value;
+}
+
 function importJobsCSV(input) {
   const file = input.files[0];
   if (!file) return;
@@ -1178,7 +1187,7 @@ function importJobsCSV(input) {
       if (cols.length >= 4) {
         // Description: col0, 3rd semicolon segment
         const f0parts = cols[0].split(';').map(p => p.replace(/^"+|"+$/g, '').trim());
-        const description = f0parts[2] || '';
+        const description = decodeHtml(f0parts[2] || '');
 
         // Coordinates via regex (most reliable)
         const coords = [...line.matchAll(/([-]?\d{2,3}\.\d{4,})/g)].map(m => parseFloat(m[1]));
@@ -1201,7 +1210,7 @@ function importJobsCSV(input) {
       // ── Format B: original semicolon-delimited Google Maps Easy export ──
       const parts = line.split(';').map(p => p.trim().replace(/^"(.*)"$/, '$1'));
       if (parts.length >= 6) {
-        const description = parts[2] ? parts[2].trim() : '';
+        const description = parts[2] ? decodeHtml(parts[2].trim()) : '';
         const lat = parseFloat(parts[4]);
         const lng = parseFloat(parts[5]);
         const rawAddr = parts[6] || parts[3] || '';
