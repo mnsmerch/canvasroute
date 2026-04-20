@@ -721,12 +721,19 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 <div class="ov" id="ovJobs">
   <div class="mod" style="max-width:620px;">
     <div class="mh">Completed Jobs <button onclick="closeJobsModal()">×</button></div>
-    <div class="mt" style="flex-wrap:wrap;gap:8px;">
-      <div style="width:100%;font-size:11px;color:#6b7280;">Add a job manually or import from a Google Maps Easy CSV export.</div>
-      <input type="text" id="jobDesc" placeholder="Description — e.g. 2026 Painted Exterior" style="flex:1;min-width:180px;">
-      <input type="text" id="jobAddr" placeholder="Address — e.g. 4125 Suncrest Dr, Fort Collins, CO" style="flex:2;min-width:220px;">
-      <button class="btn bg" style="background:#16a34a;" onclick="addJobManually()">+ Add</button>
-      <label class="btn bh" style="color:var(--ink);border-color:var(--rule);cursor:pointer;text-align:center;">Import CSV<input type="file" accept=".csv,.txt" style="display:none;" onchange="importJobsCSV(this)"></label>
+    <div class="mt" style="flex-direction:column;gap:10px;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <label style="font-size:12px;font-weight:700;color:var(--navy);white-space:nowrap;">YEAR</label>
+        <select id="jobYear" style="padding:5px 8px;border:1px solid var(--rule);border-radius:4px;font-size:13px;"></select>
+        <label style="font-size:12px;font-weight:700;color:var(--navy);white-space:nowrap;margin-left:4px;">TYPE</label>
+        <div id="jobTypeToggles" style="display:flex;gap:5px;flex-wrap:wrap;"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <input type="text" id="jobAddr" placeholder="Address — e.g. 4125 Suncrest Dr, Fort Collins, CO" style="flex:1;min-width:220px;padding:5px 9px;border:1px solid var(--rule);border-radius:4px;font-size:13px;">
+        <button class="btn bg" style="background:#16a34a;white-space:nowrap;" onclick="addJobManually()">+ Add</button>
+        <label class="btn bh" style="color:var(--ink);border-color:var(--rule);cursor:pointer;text-align:center;white-space:nowrap;">Import CSV<input type="file" accept=".csv,.txt" style="display:none;" onchange="importJobsCSV(this)"></label>
+      </div>
+      <div id="jobPreview" style="font-size:12px;color:#15803d;font-weight:600;min-height:16px;"></div>
     </div>
     <div class="mb" id="mbJobs" style="padding:0;"></div>
     <div class="mf">
@@ -1087,7 +1094,55 @@ async function deleteJobFromCloud(id) {
   }
 }
 
+const JOB_TYPES = ['Exterior', 'Interior', 'Cabinet', 'Deck', 'Fence'];
+
+function buildJobDescription() {
+  const year = document.getElementById('jobYear').value;
+  const selected = JOB_TYPES.filter(t => document.getElementById('jobType_' + t).classList.contains('active'));
+  if (!selected.length) return '';
+  const parts = selected.slice(0, -1).join(', ');
+  const last = selected[selected.length - 1];
+  const typeStr = parts ? parts + ' & ' + last : last;
+  return `${year} Painted ${typeStr}`;
+}
+
+function updateJobPreview() {
+  const desc = buildJobDescription();
+  document.getElementById('jobPreview').textContent = desc ? 'Preview: ' + desc : '';
+}
+
+function toggleJobType(type) {
+  const btn = document.getElementById('jobType_' + type);
+  btn.classList.toggle('active');
+  if (btn.classList.contains('active')) {
+    btn.style.background = '#15803d'; btn.style.color = '#fff'; btn.style.borderColor = '#15803d';
+  } else {
+    btn.style.background = '#fff'; btn.style.color = 'var(--ink)'; btn.style.borderColor = 'var(--rule)';
+  }
+  updateJobPreview();
+}
+
 function openJobsModal() {
+  // Populate year dropdown
+  const yearSel = document.getElementById('jobYear');
+  const curYear = new Date().getFullYear();
+  yearSel.innerHTML = '';
+  for (let y = curYear; y >= 1990; y--) {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y;
+    if (y === curYear) opt.selected = true;
+    yearSel.appendChild(opt);
+  }
+
+  // Populate type toggle buttons
+  const container = document.getElementById('jobTypeToggles');
+  container.innerHTML = JOB_TYPES.map(t =>
+    `<button id="jobType_${t}" onclick="toggleJobType('${t}')"
+      style="padding:4px 10px;border:1px solid var(--rule);border-radius:4px;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:var(--ink);">${t}</button>`
+  ).join('');
+
+  document.getElementById('jobPreview').textContent = '';
+  document.getElementById('jobAddr').value = '';
   renderJobsList();
   document.getElementById('ovJobs').classList.add('on');
 }
@@ -1113,9 +1168,10 @@ function renderJobsList() {
 }
 
 async function addJobManually() {
-  const desc = document.getElementById('jobDesc').value.trim();
+  const desc = buildJobDescription();
   const addr = document.getElementById('jobAddr').value.trim();
-  if (!desc || !addr) { alert('Please enter both a description and an address.'); return; }
+  if (!desc) { alert('Please select at least one job type.'); return; }
+  if (!addr) { alert('Please enter an address.'); return; }
   geocoder.geocode({ address: addr }, async (results, status) => {
     if (status !== 'OK' || !results[0]) {
       alert('Could not find that address. Please try a more specific address.');
@@ -1132,9 +1188,14 @@ async function addJobManually() {
     await saveJobToCloud(job);
     renderJobsList();
     renderJobMarkers();
-    renderList(); // refresh sidebar badges
-    document.getElementById('jobDesc').value = '';
+    renderList();
+    // Reset form
+    JOB_TYPES.forEach(t => {
+      const btn = document.getElementById('jobType_' + t);
+      if (btn) { btn.classList.remove('active'); btn.style.background='#fff'; btn.style.color='var(--ink)'; btn.style.borderColor='var(--rule)'; }
+    });
     document.getElementById('jobAddr').value = '';
+    document.getElementById('jobPreview').textContent = '';
   });
 }
 
