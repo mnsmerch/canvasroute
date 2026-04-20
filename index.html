@@ -967,6 +967,7 @@ let printStopsRef = []; // used when reprinting a saved route
 let completedJobs = []; // jobs loaded from Firestore completed_jobs collection
 let jobMarkers = [];    // green pins for completed jobs on the map
 let jobInfoWindow = null;
+let dismissedJobStops = new Set(); // stop IDs where user dismissed the job match badge
 
 // ── INIT ─────────────────────────────────────────
 window.initMap = function() {
@@ -1069,8 +1070,13 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-function findJobsNear(lat, lng, radiusMeters = 30) {
+function findJobsNear(lat, lng, radiusMeters = 12) {
   return completedJobs.filter(j => haversineMeters(lat, lng, j.lat, j.lng) <= radiusMeters);
+}
+
+function dismissJobBadge(stopId) {
+  dismissedJobStops.add(stopId);
+  renderList();
 }
 
 function mkJobIcon() {
@@ -1527,7 +1533,7 @@ function importJobsCSV(input) {
 
     const dupes = jobs.filter(j => completedJobs.some(e =>
       e.description.trim().toLowerCase() === j.description.trim().toLowerCase() &&
-      haversineMeters(e.lat, e.lng, j.lat, j.lng) <= 30
+      haversineMeters(e.lat, e.lng, j.lat, j.lng) <= 12
     ));
     const fresh = jobs.filter(j => !dupes.includes(j));
 
@@ -1719,10 +1725,10 @@ function renderList() {
   const l = document.getElementById('list');
   if (!stops.length) { l.innerHTML = '<div class="emp">🗺️<br><br>No stops yet.<br>Click the map to begin.</div>'; return; }
   l.innerHTML = stops.map((s, i) => {
-    const nearJobs = (s.pos && completedJobs.length)
+    const nearJobs = (s.pos && completedJobs.length && !dismissedJobStops.has(s.id))
       ? findJobsNear(s.pos.lat(), s.pos.lng()) : [];
     const jobBadge = nearJobs.length
-      ? `<div class="job-badge">${nearJobs.map(j => x(j.description)).join(' · ')}</div>` : '';
+      ? `<div class="job-badge">${nearJobs.map(j => x(j.description)).join(' · ')}<span onclick="event.stopPropagation();dismissJobBadge(${s.id})" style="margin-left:5px;cursor:pointer;font-size:11px;opacity:.7;" title="Not a match — dismiss">✕</span></div>` : '';
     return `
     <div class="itm" id="i${s.id}" draggable="true">
       <div class="drag-handle" onmousedown="dragAllowed=true" title="Drag to reorder">⠿</div>
