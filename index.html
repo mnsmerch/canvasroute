@@ -938,6 +938,9 @@ function doInitMap() {
   });
   input.addEventListener('keydown', e => { if (e.key === 'Enter') setTimeout(doSearch, 100); });
 
+  // Address autocomplete for the Completed Jobs modal
+  new google.maps.places.Autocomplete(document.getElementById('jobAddr'), { types: ['address'] });
+
   map.addListener('click', e => { if (addMode) addStop(e.latLng); });
 
   // Load routes from cloud then reveal app
