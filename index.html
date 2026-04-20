@@ -75,6 +75,8 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 .past-legend-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
 .past-legend-row:last-child { margin-bottom: 0; }
 .pl-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+/* COMPLETED JOB BADGE on stop items */
+.job-badge { display:inline-flex; align-items:center; gap:3px; background:#dcfce7; color:#15803d; border:1px solid #86efac; border-radius:3px; font-size:10px; font-weight:700; padding:2px 5px; margin-top:4px; margin-bottom:2px; }
 
 /* MODALS */
 .ov { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 9000; display: none; align-items: center; justify-content: center; }
@@ -461,6 +463,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
       <button class="btn bh" id="modeBtn" onclick="toggleMode()">📌 ADDING STOPS</button>
       <button class="btn bpurple" onclick="openSavedRoutes()">📂 SAVED ROUTES</button>
       <button class="btn bo" style="background:#0f766e;" onclick="openReport()">📊 REPORT</button>
+      <button class="btn bg" style="background:#16a34a;" onclick="openJobsModal()">🎨 Jobs</button>
       <button class="btn bg" onclick="openModal()">🖨 PRINT</button>
       <button class="btn br" onclick="clearAll()">✕ CLEAR</button>
       <button class="btn bh" style="color:#6b7280;border-color:var(--rule);" onclick="adminLogout()">Sign Out</button>
@@ -487,6 +490,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
         <div style="font-size:10px;font-weight:700;color:#1a2744;margin-bottom:5px;letter-spacing:.5px;">MAP KEY</div>
         <div class="past-legend-row"><div class="pl-dot" style="background:#1a2744;"></div><span>Current route</span></div>
         <div class="past-legend-row"><div class="pl-dot" style="background:#9ca3af;border:1px solid #ccc;"></div><span>Already canvassed</span></div>
+        <div class="past-legend-row" id="legendJobRow" style="display:none;"><div class="pl-dot" style="background:#16a34a;border:1px solid #fff;"></div><span>Completed job</span></div>
       </div>
     </div>
   </div>
@@ -713,6 +717,24 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
   </div>
 </div>
 
+<!-- COMPLETED JOBS MODAL -->
+<div class="ov" id="ovJobs">
+  <div class="mod" style="max-width:620px;">
+    <div class="mh">🎨 Completed Jobs <button onclick="closeJobsModal()">×</button></div>
+    <div class="mt" style="flex-wrap:wrap;gap:8px;">
+      <div style="width:100%;font-size:11px;color:#6b7280;">Add a job manually or import from a Google Maps Easy CSV export.</div>
+      <input type="text" id="jobDesc" placeholder="Description — e.g. 2026 Painted Exterior" style="flex:1;min-width:180px;">
+      <input type="text" id="jobAddr" placeholder="Address — e.g. 4125 Suncrest Dr, Fort Collins, CO" style="flex:2;min-width:220px;">
+      <button class="btn bg" style="background:#16a34a;" onclick="addJobManually()">+ Add</button>
+      <label class="btn bh" style="color:var(--ink);border-color:var(--rule);cursor:pointer;text-align:center;">📥 Import CSV<input type="file" accept=".csv,.txt" style="display:none;" onchange="importJobsCSV(this)"></label>
+    </div>
+    <div class="mb" id="mbJobs" style="padding:0;"></div>
+    <div class="mf">
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeJobsModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="printTarget" style="display:none;"></div>
 
 <script>
@@ -884,6 +906,9 @@ document.addEventListener('mouseup', () => { dragAllowed = false; });
 let currentTab = 'sheet';
 let pastMarkers = [];   // gray markers for previously saved routes
 let printStopsRef = []; // used when reprinting a saved route
+let completedJobs = []; // jobs loaded from Firestore completed_jobs collection
+let jobMarkers = [];    // green pins for completed jobs on the map
+let jobInfoWindow = null;
 
 // ── INIT ─────────────────────────────────────────
 window.initMap = function() {
@@ -920,6 +945,7 @@ function doInitMap() {
     renderList();
     loadPastMarkersFromStorage();
     loadHomeMarkers();
+    loadCompletedJobs().then(() => renderJobMarkers());
     setupLiveTracking();
     document.getElementById('loadingScreen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
@@ -968,6 +994,187 @@ function loadHomeMarkers() {
       homeMarkers.push(marker);
     });
   });
+}
+
+// ── COMPLETED JOBS ────────────────────────────────
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function findJobsNear(lat, lng, radiusMeters = 30) {
+  return completedJobs.filter(j => haversineMeters(lat, lng, j.lat, j.lng) <= radiusMeters);
+}
+
+function mkJobIcon() {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='30' height='40' viewBox='0 0 30 40'><path d='M15 0C6.7 0 0 6.7 0 15c0 11.3 15 25 15 25S30 26.3 30 15C30 6.7 23.3 0 15 0z' fill='%2316a34a' stroke='white' stroke-width='2'/><text x='15' y='17' text-anchor='middle' dominant-baseline='middle' fill='white' font-family='Arial' font-size='15'>🎨</text></svg>`;
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(30, 40),
+    anchor: new google.maps.Point(15, 40)
+  };
+}
+
+function clearJobMarkers() {
+  jobMarkers.forEach(m => m.setMap(null));
+  jobMarkers = [];
+}
+
+function renderJobMarkers() {
+  clearJobMarkers();
+  if (!completedJobs.length) { document.getElementById('legendJobRow').style.display = 'none'; return; }
+  if (!jobInfoWindow) jobInfoWindow = new google.maps.InfoWindow();
+  completedJobs.forEach(job => {
+    const m = new google.maps.Marker({
+      position: { lat: job.lat, lng: job.lng },
+      map,
+      icon: mkJobIcon(),
+      title: job.description,
+      zIndex: 200
+    });
+    m.addListener('click', () => {
+      jobInfoWindow.setContent(
+        `<div style="font-family:Arial,sans-serif;padding:4px 2px;max-width:230px;">` +
+        `<div style="font-weight:700;font-size:13px;color:#15803d;margin-bottom:4px;">🎨 ${job.description}</div>` +
+        `<div style="font-size:12px;color:#374151;">${job.address}</div>` +
+        `</div>`
+      );
+      jobInfoWindow.open(map, m);
+    });
+    jobMarkers.push(m);
+  });
+  document.getElementById('legendJobRow').style.display = 'flex';
+  document.getElementById('pastLegend').classList.add('on');
+}
+
+async function loadCompletedJobs() {
+  try {
+    const snap = await db.collection('completed_jobs').orderBy('id', 'desc').get();
+    completedJobs = snap.docs.map(d => d.data());
+  } catch(e) {
+    console.warn('Could not load completed_jobs:', e);
+    completedJobs = [];
+  }
+}
+
+async function saveJobToCloud(job) {
+  showSync('Saving job…');
+  try {
+    await db.collection('completed_jobs').doc(String(job.id)).set(job);
+    completedJobs.unshift(job);
+  } catch(e) {
+    alert('Error saving job: ' + e.message);
+  } finally {
+    hideSync();
+  }
+}
+
+async function deleteJobFromCloud(id) {
+  showSync('Deleting…');
+  try {
+    await db.collection('completed_jobs').doc(String(id)).delete();
+    completedJobs = completedJobs.filter(j => j.id !== id);
+  } catch(e) {
+    alert('Error deleting job: ' + e.message);
+  } finally {
+    hideSync();
+  }
+}
+
+function openJobsModal() {
+  renderJobsList();
+  document.getElementById('ovJobs').classList.add('on');
+}
+
+function closeJobsModal() {
+  document.getElementById('ovJobs').classList.remove('on');
+}
+
+function renderJobsList() {
+  const mb = document.getElementById('mbJobs');
+  if (!completedJobs.length) {
+    mb.innerHTML = '<div style="padding:28px 16px;text-align:center;color:#6b7280;font-size:13px;">No completed jobs yet.<br>Add one above or import from CSV.</div>';
+    return;
+  }
+  mb.innerHTML = completedJobs.map(j => `
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 16px;border-bottom:1px solid #e5e7eb;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-size:13px;color:#15803d;">🎨 ${x(j.description)}</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:2px;">${x(j.address)}</div>
+      </div>
+      <button class="btn br" style="font-size:11px;padding:4px 9px;flex-shrink:0;" onclick="deleteJob(${j.id})">Delete</button>
+    </div>`).join('');
+}
+
+async function addJobManually() {
+  const desc = document.getElementById('jobDesc').value.trim();
+  const addr = document.getElementById('jobAddr').value.trim();
+  if (!desc || !addr) { alert('Please enter both a description and an address.'); return; }
+  geocoder.geocode({ address: addr }, async (results, status) => {
+    if (status !== 'OK' || !results[0]) {
+      alert('Could not find that address. Please try a more specific address.');
+      return;
+    }
+    const pos = results[0].geometry.location;
+    const job = {
+      id: Date.now(),
+      description: desc,
+      address: results[0].formatted_address,
+      lat: pos.lat(),
+      lng: pos.lng()
+    };
+    await saveJobToCloud(job);
+    renderJobsList();
+    renderJobMarkers();
+    renderList(); // refresh sidebar badges
+    document.getElementById('jobDesc').value = '';
+    document.getElementById('jobAddr').value = '';
+  });
+}
+
+function importJobsCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const text = e.target.result;
+    const lines = text.trim().split('\n').filter(l => l.trim());
+    const jobs = [];
+    for (const line of lines) {
+      // Google Maps Easy semicolon-delimited export format
+      const parts = line.split(';').map(p => p.trim().replace(/^"(.*)"$/, '$1'));
+      if (parts.length >= 6) {
+        const description = parts[2] ? parts[2].trim() : '';
+        const lat = parseFloat(parts[4]);
+        const lng = parseFloat(parts[5]);
+        // Use plain address (field 6) or strip HTML from field 3
+        const rawAddr = parts[6] || parts[3] || '';
+        const address = rawAddr.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+        if (description && !isNaN(lat) && !isNaN(lng)) {
+          jobs.push({ id: Date.now() + jobs.length, description, address, lat, lng });
+        }
+      }
+    }
+    if (!jobs.length) { alert('No valid jobs found in the CSV. Make sure it uses the Google Maps Easy semicolon-delimited export format.'); input.value = ''; return; }
+    for (const job of jobs) await saveJobToCloud(job);
+    renderJobsList();
+    renderJobMarkers();
+    renderList();
+    alert(`✅ Imported ${jobs.length} job${jobs.length !== 1 ? 's' : ''}.`);
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+async function deleteJob(id) {
+  if (!confirm('Delete this completed job? This cannot be undone.')) return;
+  await deleteJobFromCloud(id);
+  renderJobsList();
+  renderJobMarkers();
+  renderList();
 }
 
 // ── MARKER ICONS ─────────────────────────────────
@@ -1059,6 +1266,13 @@ function reverseGeocode(latLng, id) {
       stop.street = `${latLng.lat().toFixed(5)}, ${latLng.lng().toFixed(5)}`;
       stop.city = ''; stop.fullAddress = stop.street;
     }
+    // Auto-fill note with completed job info if note is empty and there's a match
+    if (!stop.note && stop.pos && completedJobs.length) {
+      const nearJobs = findJobsNear(stop.pos.lat(), stop.pos.lng());
+      if (nearJobs.length) {
+        stop.note = nearJobs.map(j => j.description).join(', ');
+      }
+    }
     renderList();
   });
 }
@@ -1070,7 +1284,12 @@ function renderList() {
   if (mCnt) mCnt.textContent = stops.length;
   const l = document.getElementById('list');
   if (!stops.length) { l.innerHTML = '<div class="emp">🗺️<br><br>No stops yet.<br>Click the map to begin.</div>'; return; }
-  l.innerHTML = stops.map((s, i) => `
+  l.innerHTML = stops.map((s, i) => {
+    const nearJobs = (s.pos && completedJobs.length)
+      ? findJobsNear(s.pos.lat(), s.pos.lng()) : [];
+    const jobBadge = nearJobs.length
+      ? `<div class="job-badge">🎨 ${nearJobs.map(j => x(j.description)).join(' · ')}</div>` : '';
+    return `
     <div class="itm" id="i${s.id}" draggable="true">
       <div class="drag-handle" onmousedown="dragAllowed=true" title="Drag to reorder">⠿</div>
       <div class="sn" onclick="highlight(${s.id})" style="cursor:pointer;flex-shrink:0;">${i + 1}</div>
@@ -1081,11 +1300,13 @@ function renderList() {
               : `<div class="st">${x(s.street)}</div><div class="ci">${x(s.city)}</div>`}
           </div>
         </div>
+        ${jobBadge}
         <div class="note-label">NOTE</div>
         <textarea class="note-box" rows="2" placeholder="Add a note for this stop…" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" oninput="saveNote(${s.id}, this.value)">${x(s.note||'')}</textarea>
       </div>
       <button class="dl" onclick="event.stopPropagation();del(${s.id})">×</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   attachDragListeners();
   if (activeStopId !== null) {
     const el = document.getElementById('i' + activeStopId);

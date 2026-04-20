@@ -209,6 +209,10 @@
 
     <!-- VIEW 1: Status selection -->
     <div id="statusView">
+      <div id="jobMatchBanner" style="display:none;margin:10px 16px 0;padding:9px 12px;background:#dcfce7;border:1.5px solid #16a34a;border-radius:8px;">
+        <div style="font-weight:700;font-size:12px;color:#15803d;margin-bottom:2px;">🎨 We've worked at this address</div>
+        <div id="jobMatchText" style="font-size:12px;color:#166534;line-height:1.4;"></div>
+      </div>
       <div class="sheet-section">
         <label class="sheet-label" for="sheetNote">NOTE</label>
         <textarea class="sheet-note" id="sheetNote" rows="2" placeholder="Add a note for this stop…"></textarea>
@@ -317,6 +321,7 @@ let currentCanvasser = null;
 let currentRoute = null;
 let routeUnsubscribe = null;
 let pickingStopIdx = null;
+let completedJobs = [];
 
 function x(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -325,6 +330,28 @@ function x(s) {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+}
+
+// ── COMPLETED JOBS HELPERS ────────────────────────
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function findJobsNear(lat, lng, radiusMeters = 30) {
+  return completedJobs.filter(j => haversineMeters(lat, lng, j.lat, j.lng) <= radiusMeters);
+}
+
+async function loadCompletedJobsC() {
+  try {
+    const snap = await db.collection('completed_jobs').orderBy('id', 'desc').get();
+    completedJobs = snap.docs.map(d => d.data());
+  } catch(e) {
+    completedJobs = [];
+  }
 }
 
 // ── LOGIN ─────────────────────────────────────────
@@ -356,6 +383,7 @@ function doLogin() {
   currentCanvasser = name;
   sessionStorage.setItem('crCanvasser', name);
   showScreen('screenRoutes');
+  loadCompletedJobsC();
   loadMyRoutes();
 }
 
@@ -469,12 +497,14 @@ function renderDetailStops() {
   listEl.innerHTML = stops.map((s, i) => {
     const isCurrent = currentRoute.liveStopIdx === i;
     const opt = STATUS_OPTS.find(o => o.val === s.status);
+    const nearJobs = (s.lat && s.lng && completedJobs.length) ? findJobsNear(s.lat, s.lng) : [];
     return `
     <div class="stop-item${isCurrent ? ' current' : ''}" onclick="tappedStop(${i})">
       <div class="stop-num${isCurrent ? ' current' : ''}">${i + 1}</div>
       <div class="stop-addr">
         <div class="stop-street">${x(s.street)}</div>
         <div class="stop-city">${x(s.city)}</div>
+        ${nearJobs.length ? `<div class="stop-note" style="color:#15803d;font-weight:600;">🎨 ${nearJobs.map(j => x(j.description)).join(' · ')}</div>` : ''}
         ${s.note ? `<div class="stop-note">📝 ${x(s.note)}</div>` : ''}
         ${s.paintIssues && s.paintIssues.length ? `<div class="stop-note">🎨 ${x(s.paintIssues.join(', '))}${s.paintSides && s.paintSides.length ? ' — ' + x(buildSidePhrase(s.paintSides)) : ''}${s.mailSent ? ' ✉' : ''}</div>` : ''}
       </div>
@@ -543,6 +573,21 @@ function openStatusPicker(idx) {
   document.getElementById('sheetAddr').textContent = stop.street;
   document.getElementById('sheetCity').textContent = stop.city;
   document.getElementById('sheetNote').value = stop.note || '';
+
+  // Show completed job match banner if this address was previously worked on
+  const jobBanner = document.getElementById('jobMatchBanner');
+  const jobText = document.getElementById('jobMatchText');
+  if (stop.lat && stop.lng && completedJobs.length) {
+    const nearJobs = findJobsNear(stop.lat, stop.lng);
+    if (nearJobs.length) {
+      jobText.textContent = nearJobs.map(j => j.description).join(' · ');
+      jobBanner.style.display = 'block';
+    } else {
+      jobBanner.style.display = 'none';
+    }
+  } else {
+    jobBanner.style.display = 'none';
+  }
 
   // Always start on status view
   document.getElementById('statusView').style.display = 'block';
@@ -1007,6 +1052,7 @@ function centerOnMe() {
     currentCanvasser = savedName;
     document.getElementById('nameSelect').value = savedName;
     showScreen('screenRoutes');
+    loadCompletedJobsC();
     loadMyRoutes();
   }
 </script>
