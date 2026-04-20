@@ -756,6 +756,28 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
   </div>
 </div>
 
+<!-- EDIT JOB MODAL -->
+<div class="ov" id="ovEditJob">
+  <div class="mod" style="max-width:480px;">
+    <div class="mh">Edit Completed Job <button onclick="closeEditJob()">×</button></div>
+    <div class="mt" style="flex-direction:column;gap:12px;">
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--navy);display:block;margin-bottom:4px;">DESCRIPTION</label>
+        <input type="text" id="editJobDesc" style="width:100%;padding:6px 10px;border:1.5px solid var(--rule);border-radius:4px;font-size:13px;box-sizing:border-box;">
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--navy);display:block;margin-bottom:4px;">ADDRESS</label>
+        <input type="text" id="editJobAddr" style="width:100%;padding:6px 10px;border:1.5px solid var(--rule);border-radius:4px;font-size:13px;box-sizing:border-box;">
+        <div style="font-size:11px;color:#6b7280;margin-top:3px;">Changing the address will re-geocode the pin location.</div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeEditJob()">Cancel</button>
+      <button class="btn bg" style="background:#16a34a;" onclick="saveEditJob()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <!-- IMPORT REVIEW MODAL -->
 <div class="ov" id="ovImportReview">
   <div class="mod" style="max-width:640px;">
@@ -1093,7 +1115,7 @@ function renderJobMarkers() {
 async function loadCompletedJobs() {
   try {
     const snap = await db.collection('completed_jobs').orderBy('id', 'desc').get();
-    completedJobs = snap.docs.map(d => d.data());
+    completedJobs = snap.docs.map(d => ({ ...d.data(), _docId: d.id }));
   } catch(e) {
     console.warn('Could not load completed_jobs:', e);
     completedJobs = [];
@@ -1115,7 +1137,9 @@ async function saveJobToCloud(job) {
 async function deleteJobFromCloud(id) {
   showSync('Deleting…');
   try {
-    await db.collection('completed_jobs').doc(String(id)).delete();
+    const job = completedJobs.find(j => j.id === id);
+    const docId = (job && job._docId) ? job._docId : String(id);
+    await db.collection('completed_jobs').doc(docId).delete();
     completedJobs = completedJobs.filter(j => j.id !== id);
   } catch(e) {
     alert('Error deleting job: ' + e.message);
@@ -1223,7 +1247,10 @@ function renderJobsList() {
         <div style="font-weight:700;font-size:13px;color:#15803d;">${x(j.description)}</div>
         <div style="font-size:12px;color:#6b7280;margin-top:2px;">${x(j.address)}</div>
       </div>
-      <button class="btn br" style="font-size:11px;padding:4px 9px;flex-shrink:0;" onclick="event.stopPropagation();deleteJob(${j.id})">Delete</button>
+      <div style="display:flex;gap:5px;flex-shrink:0;">
+        <button class="btn bh" style="font-size:11px;padding:4px 9px;color:var(--ink);border-color:var(--rule);" onclick="event.stopPropagation();editJob(${j.id})">Edit</button>
+        <button class="btn br" style="font-size:11px;padding:4px 9px;" onclick="event.stopPropagation();deleteJob(${j.id})">Delete</button>
+      </div>
     </div>`).join('');
 }
 
@@ -1437,16 +1464,33 @@ function importJobsCSV(input) {
     for (const line of lines) {
       const cols = parseCSVLine(line);
 
+      // ── Format C: Google Sheets proper CSV export (each field its own column) ──
+      // Detected when col[0] is a plain numeric ID (no semicolons) and we have >= 6 columns.
+      // cols[2]=description, cols[3]=address, cols[4]=lat, cols[5]=lng
+      if (cols.length >= 6 && /^\d+$/.test(cols[0].trim()) && !cols[0].includes(';')) {
+        const description = cols[2] ? decodeHtml(cols[2].trim()) : '';
+        const lat = parseFloat(cols[4]);
+        const lng = parseFloat(cols[5]);
+        const rawAddr = stripHtml(cols[3] || cols[6] || '').replace(/\s+/g, ' ').trim();
+        if (description && !isNaN(lat) && !isNaN(lng)) {
+          jobs.push({ id: Date.now() + jobs.length, description, address: rawAddr, lat, lng }); continue;
+        }
+        if (description) { errors.push({ id: Date.now() + errors.length + 9999, description, address: rawAddr }); continue; }
+      }
+
       // ── Format A: Google Sheets re-export (comma-delimited, semicolons embedded) ──
-      if (cols.length >= 4) {
+      // Only trigger when col[0] contains semicolons — meaning the original semicolon-delimited
+      // row was embedded inside a quoted CSV field (the Google Sheets re-export pattern).
+      if (cols.length >= 4 && cols[0].includes(';')) {
         const f0parts = parseSemicolonLine(cols[0]).map(p => p.trim());
         const description = decodeHtml(f0parts[2] || '');
         const coords = [...line.matchAll(/([-]?\d{2,3}\.\d{4,})/g)].map(m => parseFloat(m[1]));
         const lat = coords[0], lng = coords[1];
-        const f3parts = cols[3].split(';').map(p => p.replace(/^"+|"+$/g, '').trim());
-        const street = f3parts[f3parts.length - 1] || '';
-        const city = (cols[4] || cols[1] || '').trim();
-        const stateZip = (cols[5] || cols[2] || '').trim();
+        // Street is in f0parts[3] (HTML-encoded, before the first address comma).
+        // City and state/zip land in cols[1] and cols[2] when the address has commas.
+        const street = stripHtml(f0parts[3] || '');
+        const city = (cols[1] || '').trim();
+        const stateZip = (cols[2] || '').replace(/\s+/g, ' ').trim();
         const address = [street, city, stateZip].filter(Boolean).join(', ');
         if (description && lat !== undefined && lng !== undefined && !isNaN(lat) && !isNaN(lng)) {
           jobs.push({ id: Date.now() + jobs.length, description, address, lat, lng });
@@ -1456,12 +1500,18 @@ function importJobsCSV(input) {
       }
 
       // ── Format B: original semicolon-delimited Google Maps Easy export ──
-      const parts = parseSemicolonLine(line).map(p => p.trim().replace(/^"(.*)"$/, '$1'));
+      // If the row was wrapped in outer CSV quotes (cols.length===1), parseCSVLine already
+      // stripped the outer quotes and unescaped "" → ". Use that decoded string instead of
+      // the raw line so the semicolons aren't swallowed by quote mode.
+      const bLine = (cols.length === 1 && cols[0].includes(';')) ? cols[0] : line;
+      const parts = parseSemicolonLine(bLine).map(p => p.trim().replace(/^"(.*)"$/, '$1'));
       if (parts.length >= 6) {
         const description = parts[2] ? decodeHtml(parts[2].trim()) : '';
         const lat = parseFloat(parts[4]);
         const lng = parseFloat(parts[5]);
-        const rawAddr = parts[6] || parts[3] || '';
+        // parts[3] = full address (e.g. "37501 County Road 27 Eaton CO 80615 USA")
+        // parts[6] = short form (e.g. "Eaton CO 80615 USA") — use as fallback only
+        const rawAddr = parts[3] || parts[6] || '';
         const address = stripHtml(rawAddr).replace(/\s+/g, ' ').trim();
         if (description && !isNaN(lat) && !isNaN(lng)) {
           jobs.push({ id: Date.now() + jobs.length, description, address, lat, lng }); continue;
@@ -1500,6 +1550,62 @@ async function deleteJob(id) {
   renderJobsList();
   renderJobMarkers();
   renderList();
+}
+
+// ── EDIT JOB ─────────────────────────────────────
+let editingJobId = null;
+
+function editJob(id) {
+  const job = completedJobs.find(j => j.id === id);
+  if (!job) return;
+  editingJobId = id;
+  document.getElementById('editJobDesc').value = job.description || '';
+  document.getElementById('editJobAddr').value = job.address || '';
+  document.getElementById('ovEditJob').classList.add('on');
+}
+
+function closeEditJob() {
+  editingJobId = null;
+  document.getElementById('ovEditJob').classList.remove('on');
+}
+
+async function saveEditJob() {
+  if (!editingJobId) return;
+  const job = completedJobs.find(j => j.id === editingJobId);
+  if (!job) return;
+
+  const newDesc = document.getElementById('editJobDesc').value.trim();
+  const newAddr = document.getElementById('editJobAddr').value.trim();
+  if (!newDesc || !newAddr) { alert('Description and address cannot be empty.'); return; }
+
+  const addrChanged = newAddr !== job.address;
+
+  const doSave = async (lat, lng, address) => {
+    const docId = (job._docId) ? job._docId : String(job.id);
+    showSync('Saving…');
+    try {
+      await db.collection('completed_jobs').doc(docId).update({ description: newDesc, address, lat, lng });
+      const idx = completedJobs.findIndex(j => j.id === editingJobId);
+      if (idx !== -1) completedJobs[idx] = { ...completedJobs[idx], description: newDesc, address, lat, lng };
+      closeEditJob();
+      renderJobsList(); renderJobMarkers(); renderList();
+    } catch(e) {
+      alert('Error saving: ' + e.message);
+    } finally { hideSync(); }
+  };
+
+  if (addrChanged) {
+    geocoder.geocode({ address: newAddr }, async (results, status) => {
+      if (status !== 'OK' || !results[0]) {
+        alert('Could not find that address. Please try a more specific address.');
+        return;
+      }
+      const pos = results[0].geometry.location;
+      await doSave(pos.lat(), pos.lng(), results[0].formatted_address);
+    });
+  } else {
+    await doSave(job.lat, job.lng, job.address);
+  }
 }
 
 // ── MARKER ICONS ─────────────────────────────────
