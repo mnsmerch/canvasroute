@@ -99,6 +99,14 @@
     /* ── VIEW MAP BANNER ── */
     .view-map-banner { background: #1a2744; margin: 8px 8px 0; border-radius: 10px; padding: 14px 16px; cursor: pointer; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
     .view-map-banner:active { background: #0f1a30; }
+
+    /* ── SCHEDULE OVERLAY ── */
+    .sched-ov { position: fixed; inset: 0; background: #f4f0eb; z-index: 300; display: none; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .sched-ov.on { display: flex; }
+    .sched-day-card { background: #fff; border-radius: 10px; padding: 14px 16px; margin: 0 12px 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .sched-toggle-btn { flex-shrink: 0; padding: 9px 20px; border-radius: 20px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all .15s; }
+    .sched-time-input { width: 100%; padding: 11px 10px; border: 1.5px solid #e5e7eb; border-radius: 8px; font-size: 16px; color: #1a2744; background: #fff; outline: none; }
+    .sched-time-input:focus { border-color: #6b3fa0; }
   </style>
 </head>
 <body>
@@ -130,6 +138,7 @@
 <div class="screen" id="screenRoutes">
   <div class="topbar">
     <div class="topbar-title">📂 My Routes</div>
+    <button class="topbar-btn" onclick="openSchedule()" style="background:rgba(255,255,255,.2);">📅 Schedule</button>
     <button class="topbar-btn" onclick="logout()">Sign Out</button>
   </div>
   <div style="padding: 12px; flex: 1;" id="routesList">
@@ -277,6 +286,22 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- ════════ SCHEDULE OVERLAY ════════ -->
+<div class="sched-ov" id="schedOverlay">
+  <div class="topbar" style="position:sticky;top:0;z-index:10;">
+    <button class="topbar-btn" onclick="closeSchedule()">← Back</button>
+    <div class="topbar-title">📅 My Schedule</div>
+    <button class="topbar-btn" id="schedSubmitBtn" onclick="submitSchedule()" style="background:#10b981;">Submit</button>
+  </div>
+  <div style="padding:12px 12px 4px;">
+    <div style="background:#fff;border-radius:10px;padding:13px 16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.08);">
+      <div style="font-size:14px;font-weight:700;color:#1a2744;" id="schedWeekLabel">Loading…</div>
+      <div style="font-size:11px;color:#6b7280;margin-top:4px;">Tap a day to toggle between OFF and available, then set your times.</div>
+    </div>
+  </div>
+  <div id="schedDayRows" style="padding:0 0 24px;"></div>
 </div>
 
 <script>
@@ -1301,6 +1326,156 @@ function centerOnMe() {
     cMap.panTo({ lat: pos.coords.latitude, lng: pos.coords.longitude });
     cMap.setZoom(17);
   });
+}
+
+// ── SCHEDULE ──────────────────────────────────────
+const SCHED_DAYS      = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+const SCHED_DAYS_KEY  = ['mon','tue','wed','thu','fri','sat','sun'];
+let schedWeekMonday = null;
+let schedData = {};    // { mon:{off:true}, tue:{off:false,start:'17:00',end:'19:30'}, … }
+let schedAlreadySubmitted = false;
+
+function getScheduleWeekMonday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const day = today.getDay(); // 0=Sun
+  const m = new Date(today);
+  if (day === 0) {
+    m.setDate(today.getDate() + 1); // Sunday → next Monday
+  } else {
+    m.setDate(today.getDate() - (day - 1)); // Mon-Sat → this Monday
+  }
+  return m;
+}
+
+function schedWeekKey(monday) {
+  return monday.toISOString().split('T')[0];
+}
+
+function formatSchedWeekLabel(monday) {
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const opts = { month: 'short', day: 'numeric' };
+  return `Week of ${monday.toLocaleDateString('en-US', opts)} – ${sunday.toLocaleDateString('en-US', opts)}`;
+}
+
+function formatTime12C(t24) {
+  if (!t24) return '';
+  const [h, m] = t24.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${h % 12 || 12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+
+async function openSchedule() {
+  schedWeekMonday = getScheduleWeekMonday();
+  document.getElementById('schedWeekLabel').textContent = formatSchedWeekLabel(schedWeekMonday);
+
+  // Default all days to OFF
+  schedData = {};
+  SCHED_DAYS_KEY.forEach(k => { schedData[k] = { off: true }; });
+  schedAlreadySubmitted = false;
+
+  // Load existing submission if any
+  try {
+    const snap = await db.collection('routes').doc('_schedule').get();
+    if (snap.exists) {
+      const wk = (snap.data().weeks || {})[schedWeekKey(schedWeekMonday)];
+      if (wk && wk[currentCanvasser]) {
+        schedData = JSON.parse(JSON.stringify(wk[currentCanvasser]));
+        schedAlreadySubmitted = true;
+      }
+    }
+  } catch(e) { /* offline or first time — use defaults */ }
+
+  const btn = document.getElementById('schedSubmitBtn');
+  btn.textContent = schedAlreadySubmitted ? 'Update' : 'Submit';
+  btn.disabled = false;
+
+  renderScheduleForm();
+  document.getElementById('schedOverlay').classList.add('on');
+}
+
+function closeSchedule() {
+  document.getElementById('schedOverlay').classList.remove('on');
+}
+
+function renderScheduleForm() {
+  const container = document.getElementById('schedDayRows');
+  container.innerHTML = SCHED_DAYS.map((dayName, i) => {
+    const key = SCHED_DAYS_KEY[i];
+    const dayDate = new Date(schedWeekMonday);
+    dayDate.setDate(schedWeekMonday.getDate() + i);
+    const dateStr = dayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const d = schedData[key] || { off: true };
+    const isOff = d.off !== false;
+    const start = d.start || '17:00';
+    const end   = d.end   || '19:30';
+
+    return `
+    <div class="sched-day-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div>
+          <div style="font-size:15px;font-weight:700;color:#1a2744;">${dayName}</div>
+          <div style="font-size:12px;color:#6b7280;margin-top:1px;">${dateStr}</div>
+        </div>
+        <button class="sched-toggle-btn"
+          onclick="toggleSchedDay('${key}')"
+          style="border:2px solid ${isOff ? '#e5e7eb' : '#10b981'};background:${isOff ? '#f3f4f6' : '#ecfdf5'};color:${isOff ? '#6b7280' : '#065f46'};">
+          ${isOff ? 'OFF' : 'Available'}
+        </button>
+      </div>
+      ${!isOff ? `
+      <div style="display:flex;align-items:flex-end;gap:10px;margin-top:12px;">
+        <div style="flex:1;">
+          <div style="font-size:10px;font-weight:700;color:#6b7280;letter-spacing:.5px;margin-bottom:5px;">START TIME</div>
+          <input class="sched-time-input" type="time" value="${start}"
+            onchange="setSchedTime('${key}','start',this.value)">
+        </div>
+        <div style="font-size:20px;color:#d1d5db;padding-bottom:10px;">–</div>
+        <div style="flex:1;">
+          <div style="font-size:10px;font-weight:700;color:#6b7280;letter-spacing:.5px;margin-bottom:5px;">END TIME</div>
+          <input class="sched-time-input" type="time" value="${end}"
+            onchange="setSchedTime('${key}','end',this.value)">
+        </div>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function toggleSchedDay(key) {
+  const d = schedData[key] || { off: true };
+  if (d.off !== false) {
+    schedData[key] = { off: false, start: '17:00', end: '19:30' };
+  } else {
+    schedData[key] = { off: true };
+  }
+  renderScheduleForm();
+}
+
+function setSchedTime(key, field, val) {
+  if (!schedData[key]) schedData[key] = { off: false };
+  schedData[key][field] = val;
+}
+
+async function submitSchedule() {
+  const btn = document.getElementById('schedSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    const snap = await db.collection('routes').doc('_schedule').get();
+    const existing = snap.exists ? (snap.data().weeks || {}) : {};
+    const wk = schedWeekKey(schedWeekMonday);
+    if (!existing[wk]) existing[wk] = {};
+    existing[wk][currentCanvasser] = schedData;
+    await db.collection('routes').doc('_schedule').set({ weeks: existing });
+    btn.textContent = 'Saved!';
+    schedAlreadySubmitted = true;
+    setTimeout(() => { btn.disabled = false; btn.textContent = 'Update'; }, 1800);
+  } catch(e) {
+    alert('Failed to save. Check your connection and try again.');
+    btn.disabled = false;
+    btn.textContent = schedAlreadySubmitted ? 'Update' : 'Submit';
+  }
 }
 </script>
 

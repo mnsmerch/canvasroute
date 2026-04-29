@@ -467,6 +467,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
       <button class="btn bg" onclick="openModal()">🖨 PRINT</button>
       <button class="btn br" onclick="clearAll()">✕ CLEAR</button>
       <button class="btn bh" style="background:#f0e8ff;border-color:#c4b5fd;color:#5b21b6;" onclick="openCanvassers()">👥 Team</button>
+      <button class="btn bh" style="background:#ecfdf5;border-color:#6ee7b7;color:#065f46;" onclick="openScheduleAdmin()">📅 Schedule</button>
       <button class="btn bh" style="color:#6b7280;border-color:var(--rule);" onclick="adminLogout()">Sign Out</button>
     </div>
   </div>
@@ -525,6 +526,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
   <button class="mob-menu-item" onclick="openSaveDialog();closeMobileMenu()">💾 Save Route</button>
   <button class="mob-menu-item" onclick="openModal();closeMobileMenu()">🖨 Print Route</button>
   <button class="mob-menu-item" onclick="openReport();closeMobileMenu()">📊 Report</button>
+  <button class="mob-menu-item" onclick="openScheduleAdmin();closeMobileMenu()">📅 Schedule</button>
   <button class="mob-menu-item" onclick="exportCSV();closeMobileMenu()">⬇ Export CSV</button>
   <button class="mob-menu-item" onclick="forceReloadFromCloud();closeMobileMenu()">☁ Reload from Cloud</button>
   <button class="mob-menu-item danger" onclick="clearAll();closeMobileMenu()">✕ Clear All Stops</button>
@@ -623,6 +625,17 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
     <div class="mb" id="mbCanvassers"></div>
     <div class="mf">
       <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeCanvassers()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- SCHEDULE MODAL -->
+<div class="ov" id="ovSchedule">
+  <div class="mod" style="max-width:900px;">
+    <div class="mh">📅 Team Schedule <button onclick="closeScheduleAdmin()">×</button></div>
+    <div id="mbSchedule" style="padding:16px 20px 8px;overflow-y:auto;"></div>
+    <div class="mf">
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeScheduleAdmin()">Close</button>
     </div>
   </div>
 </div>
@@ -1080,6 +1093,144 @@ async function openCanvassers() {
   renderCanvassersList();
 }
 function closeCanvassers() { document.getElementById('ovCanvassers').classList.remove('on'); }
+
+// ── SCHEDULE (ADMIN) ──────────────────────────────
+const SCHED_DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const SCHED_DAY_KEYS   = ['mon','tue','wed','thu','fri','sat','sun'];
+let adminSchedMonday = null;
+
+function getAdminSchedMonday() {
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const day = today.getDay();
+  const m = new Date(today);
+  if (day === 0) {
+    m.setDate(today.getDate() + 1);
+  } else {
+    m.setDate(today.getDate() - (day - 1));
+  }
+  return m;
+}
+
+function adminSchedWeekKey(monday) {
+  return monday.toISOString().split('T')[0];
+}
+
+function formatAdminSchedWeek(monday) {
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const opts = { month: 'short', day: 'numeric' };
+  return `${monday.toLocaleDateString('en-US', opts)} – ${sunday.toLocaleDateString('en-US', opts)}`;
+}
+
+function formatTime12A(t24) {
+  if (!t24) return '';
+  const [h, m] = t24.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${h % 12 || 12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+
+async function openScheduleAdmin() {
+  if (!adminSchedMonday) adminSchedMonday = getAdminSchedMonday();
+  document.getElementById('ovSchedule').classList.add('on');
+  // Load canvassers list if not yet loaded (so we know who to show)
+  if (canvassersList.length === 0) await loadCanvassers();
+  await renderScheduleAdmin();
+}
+
+function closeScheduleAdmin() {
+  document.getElementById('ovSchedule').classList.remove('on');
+}
+
+async function shiftScheduleWeek(delta) {
+  adminSchedMonday = new Date(adminSchedMonday);
+  adminSchedMonday.setDate(adminSchedMonday.getDate() + delta * 7);
+  await renderScheduleAdmin();
+}
+
+async function renderScheduleAdmin() {
+  const container = document.getElementById('mbSchedule');
+  container.innerHTML = '<div style="text-align:center;padding:40px;color:#6b7280;">Loading…</div>';
+  const wk = adminSchedWeekKey(adminSchedMonday);
+  const dayDates = SCHED_DAY_KEYS.map((_, i) => {
+    const d = new Date(adminSchedMonday);
+    d.setDate(adminSchedMonday.getDate() + i);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  });
+
+  try {
+    const snap = await db.collection('routes').doc('_schedule').get();
+    const weeks = snap.exists ? (snap.data().weeks || {}) : {};
+    const weekData = weeks[wk] || {};
+
+    const submitted    = canvassersList.filter(c => weekData[c.name]);
+    const notSubmitted = canvassersList.filter(c => !weekData[c.name]);
+
+    let html = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;gap:10px;">
+      <button onclick="shiftScheduleWeek(-1)" style="padding:8px 16px;border:1px solid #d1d5db;border-radius:7px;background:#fff;cursor:pointer;font-size:13px;font-weight:700;color:#374151;white-space:nowrap;">← Prev</button>
+      <div style="text-align:center;flex:1;">
+        <div style="font-size:16px;font-weight:700;color:#1a2744;">${formatAdminSchedWeek(adminSchedMonday)}</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:3px;">${submitted.length} of ${canvassersList.length} submitted</div>
+      </div>
+      <button onclick="shiftScheduleWeek(1)" style="padding:8px 16px;border:1px solid #d1d5db;border-radius:7px;background:#fff;cursor:pointer;font-size:13px;font-weight:700;color:#374151;white-space:nowrap;">Next →</button>
+    </div>`;
+
+    if (canvassersList.length === 0) {
+      html += `<div style="text-align:center;padding:30px;color:#9ca3af;">No canvassers loaded. Open Team first.</div>`;
+    } else if (submitted.length === 0) {
+      html += `<div style="text-align:center;padding:30px;color:#9ca3af;font-size:14px;">No schedules submitted yet for this week.</div>`;
+    } else {
+      html += `<div style="overflow-x:auto;border-radius:8px;border:1px solid #e5e7eb;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px;">
+        <thead>
+          <tr style="background:#f8f7f4;">
+            <th style="text-align:left;padding:10px 14px;border-bottom:1px solid #e5e7eb;font-weight:700;color:#1a2744;white-space:nowrap;">Canvasser</th>
+            ${SCHED_DAY_LABELS.map((label, i) => `
+            <th style="padding:8px 6px;border-bottom:1px solid #e5e7eb;border-left:1px solid #e5e7eb;font-weight:700;color:#1a2744;text-align:center;white-space:nowrap;">
+              ${label}<br><span style="font-weight:400;font-size:10px;color:#9ca3af;">${dayDates[i]}</span>
+            </th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${canvassersList.map((c, ri) => {
+            const cData = weekData[c.name];
+            const rowBg = ri % 2 === 0 ? '#fff' : '#fafafa';
+            if (!cData) {
+              return `<tr style="background:${rowBg};">
+                <td style="padding:9px 14px;border-bottom:1px solid #f3f4f6;font-weight:600;color:#6b7280;">${x(c.name)}</td>
+                <td colspan="7" style="padding:9px 14px;border-bottom:1px solid #f3f4f6;border-left:1px solid #f3f4f6;text-align:center;color:#d1d5db;font-style:italic;font-size:11px;">not submitted</td>
+              </tr>`;
+            }
+            return `<tr style="background:${rowBg};">
+              <td style="padding:9px 14px;border-bottom:1px solid #f3f4f6;font-weight:700;color:#1a2744;">${x(c.name)}</td>
+              ${SCHED_DAY_KEYS.map(dk => {
+                const d = cData[dk] || { off: true };
+                if (d.off !== false) {
+                  return `<td style="padding:7px 4px;border-bottom:1px solid #f3f4f6;border-left:1px solid #f3f4f6;text-align:center;background:#f9fafb;color:#d1d5db;font-size:11px;">OFF</td>`;
+                }
+                return `<td style="padding:5px 4px;border-bottom:1px solid #f3f4f6;border-left:1px solid #f3f4f6;text-align:center;background:#ecfdf5;color:#065f46;font-size:11px;font-weight:700;line-height:1.5;">
+                  ${formatTime12A(d.start || '')}<br>${formatTime12A(d.end || '')}
+                </td>`;
+              }).join('')}
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table></div>`;
+    }
+
+    if (notSubmitted.length > 0) {
+      html += `<div style="margin-top:14px;padding:11px 14px;background:#fffbe6;border:1px solid #fde047;border-radius:8px;">
+        <span style="font-size:11px;font-weight:700;color:#713f12;letter-spacing:.4px;">WAITING ON (${notSubmitted.length}): </span>
+        <span style="font-size:12px;color:#92400e;">${notSubmitted.map(c => x(c.name)).join(', ')}</span>
+      </div>`;
+    }
+
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = `<div style="text-align:center;padding:30px;color:#ef4444;font-size:13px;">Failed to load schedule. Check your connection.</div>`;
+  }
+}
 
 function renderCanvassersList() {
   const mb = document.getElementById('mbCanvassers');
