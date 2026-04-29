@@ -466,6 +466,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
       <button class="btn bg" style="background:#16a34a;" onclick="openJobsModal()">Jobs</button>
       <button class="btn bg" onclick="openModal()">🖨 PRINT</button>
       <button class="btn br" onclick="clearAll()">✕ CLEAR</button>
+      <button class="btn bh" style="background:#f0e8ff;border-color:#c4b5fd;color:#5b21b6;" onclick="openCanvassers()">👥 Team</button>
       <button class="btn bh" style="color:#6b7280;border-color:var(--rule);" onclick="adminLogout()">Sign Out</button>
     </div>
   </div>
@@ -564,12 +565,6 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
     <div style="display:flex;gap:8px;padding:10px 14px 6px;border-bottom:1px solid var(--rule);flex-wrap:wrap;">
       <select id="srFilterCanvasser" onchange="renderSavedRoutes()" style="flex:1;min-width:140px;font-size:12px;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;color:var(--ink);background:#fff;">
         <option value="">All Canvassers</option>
-        <option value="Meleah Thompson">Meleah Thompson</option>
-        <option value="Benjamin Chabot">Benjamin Chabot</option>
-        <option value="Brayden Owen">Brayden Owen</option>
-        <option value="Teddy Noel">Teddy Noel</option>
-        <option value="Josiah Abeyta">Josiah Abeyta</option>
-        <option value="Barrett Wilkinson">Barrett Wilkinson</option>
       </select>
       <input id="srFilterSearch" type="text" placeholder="Search route name…" oninput="renderSavedRoutes()" style="flex:2;min-width:140px;font-size:12px;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;color:var(--ink);" />
       <button onclick="clearSrFilters()" style="font-size:11px;padding:5px 10px;border:1px solid #d1d5db;border-radius:5px;background:#f9fafb;color:#6b7280;cursor:pointer;white-space:nowrap;">↺ Reset</button>
@@ -611,18 +606,23 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
       <label for="saveCanvasser" style="margin-top:12px;display:block;">Canvasser</label>
       <select id="saveCanvasser">
         <option value="">— Select canvasser —</option>
-        <option value="Meleah Thompson">Meleah Thompson</option>
-        <option value="Benjamin Chabot">Benjamin Chabot</option>
-        <option value="Brayden Owen">Brayden Owen</option>
-        <option value="Teddy Noel">Teddy Noel</option>
-        <option value="Josiah Abeyta">Josiah Abeyta</option>
-        <option value="Barrett Wilkinson">Barrett Wilkinson</option>
       </select>
       <div class="save-hint" id="saveHint" style="margin-top:8px;">Give this route a name so you can find it later.</div>
     </div>
     <div class="mf">
       <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeSaveDialog()">Cancel</button>
       <button class="btn bpurple" id="saveDialogBtn" onclick="confirmSave()">💾 Save Route</button>
+    </div>
+  </div>
+</div>
+
+<!-- CANVASSERS MODAL -->
+<div class="ov" id="ovCanvassers">
+  <div class="mod" style="max-width:560px;">
+    <div class="mh">👥 Manage Canvassers <button onclick="closeCanvassers()">×</button></div>
+    <div class="mb" id="mbCanvassers"></div>
+    <div class="mf">
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeCanvassers()">Close</button>
     </div>
   </div>
 </div>
@@ -636,12 +636,6 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
         <label>Canvasser</label>
         <select id="rptCanvasser" onchange="renderReport()">
           <option value="">All Canvassers</option>
-          <option value="Meleah Thompson">Meleah Thompson</option>
-          <option value="Benjamin Chabot">Benjamin Chabot</option>
-          <option value="Brayden Owen">Brayden Owen</option>
-          <option value="Teddy Noel">Teddy Noel</option>
-          <option value="Josiah Abeyta">Josiah Abeyta</option>
-          <option value="Barrett Wilkinson">Barrett Wilkinson</option>
         </select>
       </div>
       <div class="rpt-filter">
@@ -935,6 +929,7 @@ function adminLogout() {
 }
 
 let liveTrackingData = {}; // { routeId(string): { canvasser, stopIdx, stopAddr, updatedAt } }
+let canvassersList = []; // [{ name, email, password }] — loaded from Firestore
 
 const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbw9Y-qGeB25MBgCKxS0u1GD9dK-SDkYgTNItVi-gIgrcWulQYZinBwxfWKPjOB55RcPfw/exec';
 let currentReportStops = []; // stores the current filtered stops for the Send to Sheets action
@@ -972,6 +967,161 @@ function setupLiveTracking() {
     if (document.getElementById('ovSaved').classList.contains('on')) renderSavedRoutes();
     if (document.getElementById('ovReport').classList.contains('on')) renderReport();
   }, err => console.warn('live tracking snapshot error:', err));
+}
+
+// ── CANVASSERS ────────────────────────────────────
+const INITIAL_CANVASSERS = [
+  { name: 'Meleah Thompson',   email: 'meleahthompson@gmail.com',  password: 'Stunt1001'     },
+  { name: 'Benjamin Chabot',   email: 'benchabot13@gmail.com',     password: 'BChabot392'    },
+  { name: 'Brayden Owen',      email: 'bray92673@gmail.com',       password: 'Ow3n1923'      },
+  { name: 'Nevik Davis',       email: 'taterdavis07@gmail.com',    password: 'Davi51231'     },
+  { name: 'Teddy Noel',        email: 'teddyn2006@gmail.com',      password: 'N03l1231'      },
+  { name: 'Josiah Abeyta',     email: 'josiahabeyta04@gmail.com',  password: 'Ab3ta12312'    },
+  { name: 'Barrett Wilkinson', email: 'barrett.w1997@gmail.com',   password: 'Wilkin0n1231'  },
+];
+
+async function loadCanvassers() {
+  try {
+    const snap = await db.collection('canvassers').get();
+    if (snap.empty) {
+      // First time — seed from initial list
+      const batch = db.batch();
+      INITIAL_CANVASSERS.forEach(c => batch.set(db.collection('canvassers').doc(c.email), c));
+      await batch.commit();
+      canvassersList = [...INITIAL_CANVASSERS];
+    } else {
+      canvassersList = snap.docs.map(d => d.data()).sort((a, b) => a.name.localeCompare(b.name));
+    }
+    populateCanvasserDropdowns();
+  } catch(e) { console.warn('Failed to load canvassers:', e); }
+}
+
+function populateCanvasserDropdowns() {
+  const opts = canvassersList.map(c => `<option value="${x(c.name)}">${x(c.name)}</option>`).join('');
+  const allOpts = `<option value="">All Canvassers</option>${opts}`;
+  ['rptCanvasser', 'srFilterCanvasser'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const cur = el.value;
+    el.innerHTML = allOpts;
+    el.value = cur;
+  });
+  // Save route dialog
+  const saveSel = document.getElementById('saveCanvasser');
+  if (saveSel) {
+    const cur = saveSel.value;
+    saveSel.innerHTML = `<option value="">— Select canvasser —</option>${opts}`;
+    saveSel.value = cur;
+  }
+  // Re-render if modals are open
+  if (document.getElementById('ovSaved').classList.contains('on')) renderSavedRoutes();
+  if (document.getElementById('ovReport').classList.contains('on')) renderReport();
+}
+
+async function saveCanvasser(canvasser) {
+  await db.collection('canvassers').doc(canvasser.email).set(canvasser);
+  const idx = canvassersList.findIndex(c => c.email === canvasser.email);
+  if (idx !== -1) canvassersList[idx] = canvasser;
+  else canvassersList.push(canvasser);
+  canvassersList.sort((a, b) => a.name.localeCompare(b.name));
+  populateCanvasserDropdowns();
+  renderCanvassersList();
+}
+
+async function deleteCanvasser(email) {
+  const c = canvassersList.find(c => c.email === email);
+  if (!c || !confirm(`Remove ${c.name}? They will no longer be able to log in.`)) return;
+  await db.collection('canvassers').doc(email).delete();
+  canvassersList = canvassersList.filter(c => c.email !== email);
+  populateCanvasserDropdowns();
+  renderCanvassersList();
+}
+
+function openCanvassers() {
+  renderCanvassersList();
+  document.getElementById('ovCanvassers').classList.add('on');
+}
+function closeCanvassers() { document.getElementById('ovCanvassers').classList.remove('on'); }
+
+function renderCanvassersList() {
+  const mb = document.getElementById('mbCanvassers');
+  if (!mb) return;
+  mb.innerHTML = `
+    <div style="margin-bottom:16px;">
+      <div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:8px;text-transform:uppercase;">Current Canvassers (${canvassersList.length})</div>
+      ${canvassersList.map(c => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--rule);border-radius:6px;margin-bottom:6px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:700;font-size:13px;color:#1a2744;">${x(c.name)}</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:1px;">${x(c.email)}</div>
+          </div>
+          <button onclick="openEditCanvasser('${x(c.email)}')" style="font-size:11px;padding:4px 10px;border:1px solid #d1d5db;border-radius:5px;background:#f9fafb;color:#374151;cursor:pointer;">✏️ Edit</button>
+          <button onclick="deleteCanvasser('${x(c.email)}')" style="font-size:11px;padding:4px 10px;border:1px solid #fca5a5;border-radius:5px;background:#fef2f2;color:#dc2626;cursor:pointer;">🗑 Remove</button>
+        </div>`).join('')}
+    </div>
+    <div style="background:#f8f7ff;border:1px solid #e0d9ff;border-radius:8px;padding:14px;" id="canvasserFormWrap">
+      <div style="font-size:11px;font-weight:700;color:#5b21b6;letter-spacing:.5px;margin-bottom:10px;text-transform:uppercase;" id="canvasserFormTitle">➕ Add New Canvasser</div>
+      <input id="cfName"  type="text"     placeholder="Full Name"        style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;">
+      <input id="cfEmail" type="email"    placeholder="Email Address"    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;">
+      <input id="cfPass"  type="text"     placeholder="Password"         style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:10px;display:block;">
+      <input id="cfEditEmail" type="hidden" value="">
+      <div style="display:flex;gap:8px;">
+        <button onclick="submitCanvasserForm()" style="flex:1;padding:10px;background:#6b3fa0;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Save</button>
+        <button id="cfCancelBtn" onclick="resetCanvasserForm()" style="display:none;padding:10px 16px;background:#f9fafb;border:1px solid #d1d5db;border-radius:6px;font-size:13px;color:#6b7280;cursor:pointer;">Cancel</button>
+      </div>
+      <div id="cfError" style="color:#dc2626;font-size:12px;margin-top:8px;display:none;"></div>
+    </div>`;
+}
+
+function openEditCanvasser(email) {
+  const c = canvassersList.find(c => c.email === email);
+  if (!c) return;
+  document.getElementById('cfName').value  = c.name;
+  document.getElementById('cfEmail').value = c.email;
+  document.getElementById('cfPass').value  = c.password;
+  document.getElementById('cfEditEmail').value = c.email;
+  document.getElementById('cfEmail').disabled = true; // email is the key, can't change
+  document.getElementById('canvasserFormTitle').textContent = `✏️ Edit — ${c.name}`;
+  document.getElementById('cfCancelBtn').style.display = '';
+  document.getElementById('cfError').style.display = 'none';
+  document.getElementById('canvasserFormWrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function resetCanvasserForm() {
+  document.getElementById('cfName').value  = '';
+  document.getElementById('cfEmail').value = '';
+  document.getElementById('cfPass').value  = '';
+  document.getElementById('cfEditEmail').value = '';
+  document.getElementById('cfEmail').disabled = false;
+  document.getElementById('canvasserFormTitle').textContent = '➕ Add New Canvasser';
+  document.getElementById('cfCancelBtn').style.display = 'none';
+  document.getElementById('cfError').style.display = 'none';
+}
+
+async function submitCanvasserForm() {
+  const name     = document.getElementById('cfName').value.trim();
+  const email    = document.getElementById('cfEmail').value.trim().toLowerCase();
+  const password = document.getElementById('cfPass').value.trim();
+  const editEmail= document.getElementById('cfEditEmail').value;
+  const errEl    = document.getElementById('cfError');
+
+  if (!name || !email || !password) {
+    errEl.textContent = 'All fields are required.'; errEl.style.display = 'block'; return;
+  }
+  if (!email.includes('@')) {
+    errEl.textContent = 'Enter a valid email address.'; errEl.style.display = 'block'; return;
+  }
+  // Adding new: check duplicate email
+  if (!editEmail && canvassersList.some(c => c.email === email)) {
+    errEl.textContent = 'A canvasser with that email already exists.'; errEl.style.display = 'block'; return;
+  }
+  errEl.style.display = 'none';
+  try {
+    await saveCanvasser({ name, email, password });
+    resetCanvasserForm();
+  } catch(e) {
+    errEl.textContent = 'Save failed. Check your connection.'; errEl.style.display = 'block';
+  }
 }
 
 function timeAgo(iso) {
@@ -1037,6 +1187,7 @@ function doInitMap() {
     loadPastMarkersFromStorage();
     loadHomeMarkers();
     loadCompletedJobs().then(() => renderJobMarkers());
+    loadCanvassers();
     setupLiveTracking();
     document.getElementById('loadingScreen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
@@ -2153,12 +2304,7 @@ function renderSavedRoutes() {
             <span>📅 ${r.date}</span>
             <button onclick="editRouteDate(${r.id})" style="background:none;border:1px solid #d4cfc5;border-radius:3px;font-size:10px;padding:1px 6px;cursor:pointer;color:#6b7280;" title="Change date">✏️ Date</button>
             <span>&nbsp;·&nbsp; 👤 <select onchange="reassignCanvasser(${r.id},this.value)" onclick="event.stopPropagation()" style="font-size:11px;border:1px solid #d4cfc5;border-radius:3px;padding:1px 4px;color:var(--ink);background:#fff;cursor:pointer;">
-              <option value="Meleah Thompson"${r.canvasser==='Meleah Thompson'?' selected':''}>Meleah Thompson</option>
-              <option value="Benjamin Chabot"${r.canvasser==='Benjamin Chabot'?' selected':''}>Benjamin Chabot</option>
-              <option value="Brayden Owen"${r.canvasser==='Brayden Owen'?' selected':''}>Brayden Owen</option>
-              <option value="Teddy Noel"${r.canvasser==='Teddy Noel'?' selected':''}>Teddy Noel</option>
-              <option value="Josiah Abeyta"${r.canvasser==='Josiah Abeyta'?' selected':''}>Josiah Abeyta</option>
-              <option value="Barrett Wilkinson"${r.canvasser==='Barrett Wilkinson'?' selected':''}>Barrett Wilkinson</option>
+              ${canvassersList.map(c=>`<option value="${x(c.name)}"${r.canvasser===c.name?' selected':''}>${x(c.name)}</option>`).join('')}
             </select> &nbsp;·&nbsp; 📍 ${r.stopCount} stop${r.stopCount !== 1 ? 's' : ''}</span>
           </div>
           <div class="sr-meta" style="margin-top:3px;">
