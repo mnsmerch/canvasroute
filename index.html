@@ -993,7 +993,26 @@ async function loadCanvassers() {
       canvassersList = snap.docs.map(d => d.data()).sort((a, b) => a.name.localeCompare(b.name));
     }
     populateCanvasserDropdowns();
-  } catch(e) { console.warn('Failed to load canvassers:', e); }
+    return true;
+  } catch(e) {
+    console.warn('Failed to load canvassers:', e);
+    return false;
+  }
+}
+
+async function seedAndReload() {
+  const mb = document.getElementById('mbCanvassers');
+  mb.innerHTML = '<div style="padding:30px;text-align:center;color:#6b7280;">Seeding canvassers…</div>';
+  try {
+    const batch = db.batch();
+    INITIAL_CANVASSERS.forEach(c => batch.set(db.collection('canvassers').doc(c.email), c));
+    await batch.commit();
+    canvassersList = [...INITIAL_CANVASSERS];
+    populateCanvasserDropdowns();
+    renderCanvassersList();
+  } catch(e) {
+    mb.innerHTML = `<div style="padding:20px;text-align:center;color:#dc2626;">Failed to seed: ${e.message}</div>`;
+  }
 }
 
 function populateCanvasserDropdowns() {
@@ -1037,9 +1056,17 @@ async function deleteCanvasser(email) {
   renderCanvassersList();
 }
 
-function openCanvassers() {
-  renderCanvassersList();
+async function openCanvassers() {
   document.getElementById('ovCanvassers').classList.add('on');
+  const mb = document.getElementById('mbCanvassers');
+  mb.innerHTML = '<div style="padding:30px;text-align:center;color:#6b7280;font-size:13px;">Loading canvassers…</div>';
+  const ok = await loadCanvassers();
+  if (!ok) {
+    mb.innerHTML = `<div style="padding:20px;text-align:center;color:#dc2626;font-size:13px;">⚠️ Failed to load. Check your connection and try again.<br><br>
+      <button onclick="openCanvassers()" style="padding:8px 16px;background:#6b3fa0;color:#fff;border:none;border-radius:6px;cursor:pointer;">Retry</button></div>`;
+    return;
+  }
+  renderCanvassersList();
 }
 function closeCanvassers() { document.getElementById('ovCanvassers').classList.remove('on'); }
 
@@ -1048,7 +1075,10 @@ function renderCanvassersList() {
   if (!mb) return;
   mb.innerHTML = `
     <div style="margin-bottom:16px;">
-      <div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:8px;text-transform:uppercase;">Current Canvassers (${canvassersList.length})</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.5px;text-transform:uppercase;">Current Canvassers (${canvassersList.length})</div>
+        ${canvassersList.length === 0 ? `<button onclick="seedAndReload()" style="font-size:11px;padding:4px 10px;background:#6b3fa0;color:#fff;border:none;border-radius:5px;cursor:pointer;">⚡ Initialize List</button>` : ''}
+      </div>
       ${canvassersList.map(c => `
         <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--rule);border-radius:6px;margin-bottom:6px;">
           <div style="flex:1;min-width:0;">
