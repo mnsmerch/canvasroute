@@ -957,6 +957,7 @@ function setupLiveTracking() {
       }
     });
     if (document.getElementById('ovSaved').classList.contains('on')) renderSavedRoutes();
+    if (document.getElementById('ovReport').classList.contains('on')) renderReport();
   }, err => console.warn('live tracking snapshot error:', err));
 }
 
@@ -3015,6 +3016,18 @@ function renderReport() {
 
   // Now filter by status
   const allStops = allStopsUnfiltered.filter(s => !filterStatus || s.status === filterStatus);
+
+  // Sort: newest marked stops first (statusAt desc), unstamped stops at bottom.
+  // When a date range is active the user is browsing history, so keep route order instead.
+  if (!filterFrom && !filterTo) {
+    allStops.sort((a, b) => {
+      if (a.statusAt && b.statusAt) return new Date(b.statusAt) - new Date(a.statusAt);
+      if (a.statusAt) return -1;
+      if (b.statusAt) return 1;
+      return 0;
+    });
+  }
+
   currentReportStops = allStops;
 
   // Show/hide Send to Google Sheets button
