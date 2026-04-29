@@ -2855,6 +2855,14 @@ async function autoSendNotHomeStops(route) {
 }
 
 // ── REPORTS ──────────────────────────────────────
+function formatStatusTime(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+  } catch(e) { return ''; }
+}
+
 function openReport() {
   renderReport();
   document.getElementById('ovReport').classList.add('on');
@@ -3025,6 +3033,7 @@ function renderReport() {
       </div>
       <div class="rr-status" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
         ${s.status ? `<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;background:${statusBg(s.status)};color:${statusColor(s.status)};">${x(s.status)}</span>` : '<span style="font-size:11px;color:#ccc;">—</span>'}
+        ${s.statusAt ? `<span style="font-size:10px;color:#6b7280;">${formatStatusTime(s.statusAt)}</span>` : ''}
         ${s.mailSent ? `<span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;background:#e0f2fe;color:#0369a1;">✉ Mail Sent</span>` : ''}
       </div>
     </div>`).join('');
@@ -3034,12 +3043,12 @@ function exportReportCSV() {
   const filterCanvasser = document.getElementById('rptCanvasser').value;
   const filterStatus    = document.getElementById('rptStatus').value;
   const allRoutes = getSavedRoutes();
-  const rows = [['Stop#','Street','City','Full Address','Status','Note','Route','Canvasser','Date','Start Time','End Time']];
+  const rows = [['Stop#','Street','City','Full Address','Status','Marked At','Note','Route','Canvasser','Date','Start Time','End Time']];
   allRoutes.forEach(r => {
     if (filterCanvasser && r.canvasser !== filterCanvasser) return;
     (r.stops||[]).forEach((s,i) => {
       if (filterStatus && s.status !== filterStatus) return;
-      rows.push([i+1, s.street, s.city, s.fullAddress, s.status||'', s.note||'', r.name, r.canvasser||'', r.date, r.startTime||'', r.endTime||'']);
+      rows.push([i+1, s.street, s.city, s.fullAddress, s.status||'', s.statusAt ? formatStatusTime(s.statusAt) : '', s.note||'', r.name, r.canvasser||'', r.date, r.startTime||'', r.endTime||'']);
     });
   });
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');

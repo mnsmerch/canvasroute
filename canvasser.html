@@ -850,6 +850,7 @@ async function saveCorrectAddress() {
   const stops = JSON.parse(JSON.stringify(currentRoute.stops || []));
   if (!stops[pickingStopIdx]) return;
   stops[pickingStopIdx].status = 'Wrong Address';
+  stops[pickingStopIdx].statusAt = new Date().toISOString();
   stops[pickingStopIdx].note = note;
   stops[pickingStopIdx].street = street;
   stops[pickingStopIdx].city = city;
@@ -872,6 +873,7 @@ async function commitWithPaintDetail(status, paintIssues, paintSides, mailSent) 
   const stops = JSON.parse(JSON.stringify(currentRoute.stops || []));
   if (!stops[idx]) return;
   stops[idx].status = status;
+  stops[idx].statusAt = new Date().toISOString();
   stops[idx].note = note;
   stops[idx].paintIssues = paintIssues;
   stops[idx].paintSides = paintSides;
@@ -894,6 +896,7 @@ async function commitStatus(val) {
   const stops = JSON.parse(JSON.stringify(currentRoute.stops || []));
   if (!stops[idx]) return;
   stops[idx].status = val;
+  stops[idx].statusAt = new Date().toISOString();
   stops[idx].note = note;
 
   try {
