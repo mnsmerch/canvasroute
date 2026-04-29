@@ -2168,16 +2168,23 @@ function renderSavedRoutes() {
           ${done > 0 ? `<div style="margin-top:4px;font-size:10px;color:#6b3fa0;font-weight:700;">✅ ${done}/${total} stops reviewed (${pct}%)</div>` : ''}
           ${r.continuationFromName ? `<div style="margin-top:4px;font-size:10px;color:#0369a1;font-weight:700;">🔗 Continuation from "${x(r.continuationFromName)}"</div>` : ''}
           ${(() => {
-            const ci = r.clockIn, co = r.clockOut;
+            const ci = r.clockIn, co = r.clockOut, brks = r.breaks || [];
             if (!ci) return '';
-            const ciTime = formatStatusTime(ci.time);
-            const ciLink = ci.lat ? `<a href="https://maps.google.com/?q=${ci.lat},${ci.lng}" target="_blank" style="color:#0369a1;font-size:10px;">📍 map</a>` : '';
+            const ciLink = ci.lat ? `<a href="https://maps.google.com/?q=${ci.lat},${ci.lng}" target="_blank" style="color:#0369a1;">📍</a>` : '';
+            const net = calcNetShift(r);
+            const netBadge = net ? `<span style="background:#e0f2fe;color:#0369a1;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700;margin-left:4px;">${net} working</span>` : '';
+            const breakLines = brks.map((b, i) => {
+              const bsLink = b.startLat ? `<a href="https://maps.google.com/?q=${b.startLat},${b.startLng}" target="_blank" style="color:#92400e;">📍</a>` : '';
+              const beLink = b.endLat  ? `<a href="https://maps.google.com/?q=${b.endLat},${b.endLng}" target="_blank" style="color:#92400e;">📍</a>` : '';
+              const bEnd = b.endTime ? `→ ${formatStatusTime(b.endTime)} ${beLink}` : '<span style="color:#d97706;font-weight:700;">ongoing</span>';
+              return `<div style="font-size:10px;color:#92400e;">☕ Break ${brks.length > 1 ? i+1+' ' : ''}: ${formatStatusTime(b.startTime)} ${bsLink} ${bEnd}</div>`;
+            }).join('');
             if (co) {
-              const coTime = formatStatusTime(co.time);
-              const coLink = co.lat ? `<a href="https://maps.google.com/?q=${co.lat},${co.lng}" target="_blank" style="color:#dc2626;font-size:10px;">📍 map</a>` : '';
-              return `<div style="margin-top:4px;font-size:10px;color:#374151;">🟢 In: <strong>${ciTime}</strong> ${ciLink} &nbsp;·&nbsp; 🔴 Out: <strong>${coTime}</strong> ${coLink}</div>`;
+              const coLink = co.lat ? `<a href="https://maps.google.com/?q=${co.lat},${co.lng}" target="_blank" style="color:#dc2626;">📍</a>` : '';
+              return `<div style="margin-top:4px;font-size:10px;color:#374151;">🟢 In: <strong>${formatStatusTime(ci.time)}</strong> ${ciLink} &nbsp;·&nbsp; 🔴 Out: <strong>${formatStatusTime(co.time)}</strong> ${coLink} ${netBadge}</div>${breakLines}`;
             }
-            return `<div style="margin-top:4px;font-size:10px;color:#059669;">🟢 Clocked in at <strong>${ciTime}</strong> ${ciLink}</div>`;
+            const onBreakNow = brks.length && !brks[brks.length-1].endTime;
+            return `<div style="margin-top:4px;font-size:10px;color:${onBreakNow?'#92400e':'#059669'};">${onBreakNow?'☕ On break':'🟢 Active'} since <strong>${formatStatusTime(onBreakNow ? brks[brks.length-1].startTime : ci.time)}</strong> ${onBreakNow ? (brks[brks.length-1].startLat?`<a href="https://maps.google.com/?q=${brks[brks.length-1].startLat},${brks[brks.length-1].startLng}" target="_blank" style="color:#92400e;">📍</a>`:'') : ciLink} ${netBadge}</div>${breakLines}`;
           })()}
         </div>
       </div>
@@ -2634,17 +2641,23 @@ function openReview(id) {
   document.getElementById('reviewTitle').innerHTML = `📋 Review Results — ${x(route.name)} <button onclick="closeReview()">×</button>`;
 
   const mb = document.getElementById('mbReview');
-  const ciAdmin = route.clockIn, coAdmin = route.clockOut;
+  const ciAdmin = route.clockIn, coAdmin = route.clockOut, brksAdmin = route.breaks || [];
   const clockBadge = (() => {
     if (!ciAdmin) return '';
-    const ciT = formatStatusTime(ciAdmin.time);
     const ciL = ciAdmin.lat ? `<a href="https://maps.google.com/?q=${ciAdmin.lat},${ciAdmin.lng}" target="_blank" style="color:#0369a1;">📍</a>` : '';
+    const net = calcNetShift(route);
+    const netBadge = net ? ` &nbsp;<span style="background:#e0f2fe;color:#0369a1;border-radius:4px;padding:1px 5px;font-size:10px;font-weight:700;">${net} working</span>` : '';
+    const breakRows = brksAdmin.map((b, i) => {
+      const bsL = b.startLat ? `<a href="https://maps.google.com/?q=${b.startLat},${b.startLng}" target="_blank" style="color:#92400e;">📍</a>` : '';
+      const beL = b.endLat  ? `<a href="https://maps.google.com/?q=${b.endLat},${b.endLng}" target="_blank" style="color:#92400e;">📍</a>` : '';
+      const bEnd = b.endTime ? `→ ${formatStatusTime(b.endTime)} ${beL}` : '<span style="color:#d97706;font-weight:700;">ongoing</span>';
+      return `<div style="margin-top:3px;">☕ Break${brksAdmin.length>1?' '+(i+1):''}:&nbsp;<strong>${formatStatusTime(b.startTime)}</strong> ${bsL} ${bEnd}</div>`;
+    }).join('');
     if (coAdmin) {
-      const coT = formatStatusTime(coAdmin.time);
       const coL = coAdmin.lat ? `<a href="https://maps.google.com/?q=${coAdmin.lat},${coAdmin.lng}" target="_blank" style="color:#dc2626;">📍</a>` : '';
-      return `<div style="margin-top:6px;padding:7px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;color:#374151;">🟢 Clocked in: <strong>${ciT}</strong> ${ciL} &nbsp;·&nbsp; 🔴 Clocked out: <strong>${coT}</strong> ${coL}</div>`;
+      return `<div style="margin-top:6px;padding:7px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;color:#374151;">🟢 In: <strong>${formatStatusTime(ciAdmin.time)}</strong> ${ciL} &nbsp;·&nbsp; 🔴 Out: <strong>${formatStatusTime(coAdmin.time)}</strong> ${coL}${netBadge}${breakRows ? '<br>'+breakRows : ''}</div>`;
     }
-    return `<div style="margin-top:6px;padding:7px 10px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;font-size:11px;color:#065f46;">🟢 Clocked in at <strong>${ciT}</strong> ${ciL} — currently active</div>`;
+    return `<div style="margin-top:6px;padding:7px 10px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;font-size:11px;color:#065f46;">🟢 Clocked in: <strong>${formatStatusTime(ciAdmin.time)}</strong> ${ciL}${netBadge}${breakRows ? '<br><span style="color:#92400e;">'+breakRows+'</span>' : ''}</div>`;
   })();
 
   mb.innerHTML = `
@@ -2965,6 +2978,21 @@ async function autoSendNotHomeStops(route) {
 }
 
 // ── REPORTS ──────────────────────────────────────
+function calcNetShift(r) {
+  if (!r.clockIn || !r.clockIn.time) return null;
+  const end = r.clockOut ? new Date(r.clockOut.time) : new Date();
+  const totalMs = end - new Date(r.clockIn.time);
+  const breakMs = (r.breaks || []).reduce((acc, b) => {
+    if (!b.startTime) return acc;
+    const bEnd = b.endTime ? new Date(b.endTime) : end;
+    return acc + Math.max(0, bEnd - new Date(b.startTime));
+  }, 0);
+  const mins = Math.round((totalMs - breakMs) / 60000);
+  if (mins <= 0) return null;
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+}
+
 function formatGap(secs) {
   if (secs === undefined || secs === null) return '';
   if (secs < 60) return secs + 's';

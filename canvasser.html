@@ -532,9 +532,15 @@ function renderDetailStops() {
   }).join('');
 }
 
-// ── CLOCK IN / OUT ────────────────────────────────
+// ── CLOCK IN / OUT / BREAK ────────────────────────
+function isOnBreak() {
+  if (!currentRoute || !currentRoute.breaks || !currentRoute.breaks.length) return false;
+  const last = currentRoute.breaks[currentRoute.breaks.length - 1];
+  return !!(last && last.startTime && !last.endTime);
+}
+
 function isClockedIn() {
-  return !!(currentRoute && currentRoute.clockIn && !currentRoute.clockOut);
+  return !!(currentRoute && currentRoute.clockIn && !currentRoute.clockOut && !isOnBreak());
 }
 
 function formatClockTime(iso) {
@@ -544,7 +550,11 @@ function formatClockTime(iso) {
 
 function clockLocationLink(lat, lng) {
   if (!lat || !lng) return '';
-  return `<a href="https://maps.google.com/?q=${lat},${lng}" target="_blank" style="color:inherit;text-decoration:underline;font-size:10px;">📍 View Location</a>`;
+  return `<a href="https://maps.google.com/?q=${lat},${lng}" target="_blank" style="color:inherit;text-decoration:underline;font-size:10px;">📍 map</a>`;
+}
+
+function disableClockBtns() {
+  document.querySelectorAll('#clockBar button').forEach(b => { b.disabled = true; b.textContent = 'Getting location…'; });
 }
 
 function renderClockBar() {
@@ -552,28 +562,47 @@ function renderClockBar() {
   if (!bar || !currentRoute) return;
   const ci = currentRoute.clockIn;
   const co = currentRoute.clockOut;
+  const breaks = currentRoute.breaks || [];
+  const lastBreak = breaks[breaks.length - 1];
+  const onBreak = isOnBreak();
 
   if (co) {
+    // Shift complete
+    const breakCount = breaks.length;
     bar.innerHTML = `
-      <div style="background:#f1f5f9;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:10px 14px;display:flex;align-items:center;gap:10px;">
-        <div style="flex:1;">
-          <div style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.5px;">SHIFT COMPLETE</div>
-          <div style="font-size:12px;color:#475569;margin-top:2px;">
-            In: ${formatClockTime(ci.time)} ${clockLocationLink(ci.lat, ci.lng)}
-            &nbsp;·&nbsp; Out: ${formatClockTime(co.time)} ${clockLocationLink(co.lat, co.lng)}
-          </div>
-        </div>
+      <div style="background:#f1f5f9;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:10px 14px;">
+        <div style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.5px;margin-bottom:3px;">SHIFT COMPLETE</div>
+        <div style="font-size:12px;color:#475569;">🟢 In: ${formatClockTime(ci.time)} ${clockLocationLink(ci.lat, ci.lng)} &nbsp;·&nbsp; 🔴 Out: ${formatClockTime(co.time)} ${clockLocationLink(co.lat, co.lng)}</div>
+        ${breakCount ? `<div style="font-size:11px;color:#92400e;margin-top:2px;">☕ ${breakCount} break${breakCount > 1 ? 's' : ''} taken</div>` : ''}
       </div>`;
+
+  } else if (onBreak && lastBreak) {
+    // On break
+    bar.innerHTML = `
+      <div style="background:#fefce8;border-top:2px solid #eab308;border-bottom:1px solid #fde047;padding:10px 14px;">
+        <div style="font-size:10px;font-weight:700;color:#713f12;letter-spacing:.5px;">☕ ON BREAK</div>
+        <div style="font-size:12px;color:#92400e;margin-top:2px;">Since ${formatClockTime(lastBreak.startTime)} ${clockLocationLink(lastBreak.startLat, lastBreak.startLng)}</div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button onclick="doEndBreak()" style="flex:1;background:#15803d;color:#fff;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;">▶ End Break</button>
+          <button onclick="doClockOut()" style="flex:1;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;">🔴 Clock Out</button>
+        </div>
+        <div style="font-size:11px;color:#92400e;text-align:center;margin-top:6px;">You cannot mark houses while on break.</div>
+      </div>`;
+
   } else if (ci) {
+    // Active — clocked in
     bar.innerHTML = `
-      <div style="background:#ecfdf5;border-top:2px solid #10b981;border-bottom:1px solid #a7f3d0;padding:10px 14px;display:flex;align-items:center;gap:10px;">
-        <div style="flex:1;">
-          <div style="font-size:10px;font-weight:700;color:#065f46;letter-spacing:.5px;">🟢 CLOCKED IN</div>
-          <div style="font-size:12px;color:#047857;margin-top:2px;">Since ${formatClockTime(ci.time)} ${clockLocationLink(ci.lat, ci.lng)}</div>
+      <div style="background:#ecfdf5;border-top:2px solid #10b981;border-bottom:1px solid #a7f3d0;padding:10px 14px;">
+        <div style="font-size:10px;font-weight:700;color:#065f46;letter-spacing:.5px;">🟢 CLOCKED IN</div>
+        <div style="font-size:12px;color:#047857;margin-top:2px;">Since ${formatClockTime(ci.time)} ${clockLocationLink(ci.lat, ci.lng)}</div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button onclick="doStartBreak()" style="flex:1;background:#d97706;color:#fff;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;">☕ Take a Break</button>
+          <button onclick="doClockOut()" style="flex:1;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;">🔴 Clock Out</button>
         </div>
-        <button id="clockOutBtn" onclick="doClockOut()" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0;">🔴 Clock Out</button>
       </div>`;
+
   } else {
+    // Not clocked in yet
     bar.innerHTML = `
       <div style="padding:10px 14px;background:#fff7ed;border-top:2px solid #f97316;border-bottom:1px solid #fed7aa;">
         <button id="clockInBtn" onclick="doClockIn()" style="width:100%;background:#15803d;color:#fff;border:none;border-radius:10px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:.3px;">🟢 Clock In to Start</button>
@@ -587,7 +616,7 @@ async function getLocation() {
     if (!navigator.geolocation) { resolve(null); return; }
     navigator.geolocation.getCurrentPosition(
       pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      ()  => resolve(null),
+      ()   => resolve(null),
       { timeout: 10000, enableHighAccuracy: true }
     );
   });
@@ -595,32 +624,76 @@ async function getLocation() {
 
 async function doClockIn() {
   if (!currentRoute || currentRoute.clockIn) return;
-  const btn = document.getElementById('clockInBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Getting your location…'; }
+  disableClockBtns();
   const loc = await getLocation();
   const clockIn = { time: new Date().toISOString(), lat: loc ? loc.lat : null, lng: loc ? loc.lng : null };
   try {
     await db.collection('routes').doc(String(currentRoute.id)).update({ clockIn });
   } catch(e) {
     alert('Failed to clock in. Check your connection and try again.');
-    if (btn) { btn.disabled = false; btn.textContent = '🟢 Clock In to Start'; }
+    renderClockBar();
+  }
+}
+
+async function doStartBreak() {
+  if (!currentRoute || !currentRoute.clockIn || currentRoute.clockOut || isOnBreak()) return;
+  disableClockBtns();
+  const loc = await getLocation();
+  const breaks = JSON.parse(JSON.stringify(currentRoute.breaks || []));
+  breaks.push({ startTime: new Date().toISOString(), startLat: loc ? loc.lat : null, startLng: loc ? loc.lng : null });
+  try {
+    await db.collection('routes').doc(String(currentRoute.id)).update({ breaks });
+  } catch(e) {
+    alert('Failed to start break. Check your connection and try again.');
+    renderClockBar();
+  }
+}
+
+async function doEndBreak() {
+  if (!currentRoute || !isOnBreak()) return;
+  disableClockBtns();
+  const loc = await getLocation();
+  const breaks = JSON.parse(JSON.stringify(currentRoute.breaks || []));
+  const last = breaks[breaks.length - 1];
+  if (last && !last.endTime) {
+    last.endTime = new Date().toISOString();
+    last.endLat = loc ? loc.lat : null;
+    last.endLng = loc ? loc.lng : null;
+  }
+  try {
+    await db.collection('routes').doc(String(currentRoute.id)).update({ breaks });
+  } catch(e) {
+    alert('Failed to end break. Check your connection and try again.');
+    renderClockBar();
   }
 }
 
 async function doClockOut() {
   if (!currentRoute || !currentRoute.clockIn || currentRoute.clockOut) return;
   if (!confirm('Clock out and end your shift?')) return;
-  const btn = document.getElementById('clockOutBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Getting location…'; }
+  disableClockBtns();
 
   const loc = await getLocation();
   const clockOut = { time: new Date().toISOString(), lat: loc ? loc.lat : null, lng: loc ? loc.lng : null };
+
+  // If currently on break, close that break at the same time as clock out
+  const breaks = JSON.parse(JSON.stringify(currentRoute.breaks || []));
+  if (isOnBreak()) {
+    const last = breaks[breaks.length - 1];
+    if (last && !last.endTime) {
+      last.endTime = clockOut.time;
+      last.endLat = clockOut.lat;
+      last.endLng = clockOut.lng;
+    }
+  }
 
   const stops = currentRoute.stops || [];
   const unvisited = stops.filter(s => !s.status);
 
   try {
-    await db.collection('routes').doc(String(currentRoute.id)).update({ clockOut, completed: true });
+    const update = { clockOut, completed: true };
+    if (breaks.length) update.breaks = breaks;
+    await db.collection('routes').doc(String(currentRoute.id)).update(update);
 
     if (unvisited.length > 0) {
       const tomorrow = new Date();
@@ -647,17 +720,16 @@ async function doClockOut() {
     }
   } catch(e) {
     alert('Failed to clock out. Check your connection and try again.');
-    if (btn) { btn.disabled = false; btn.textContent = '🔴 Clock Out'; }
+    renderClockBar();
   }
 }
 
 // ── STOP TAP (list view) ──────────────────────────
 function tappedStop(idx) {
   if (!currentRoute) return;
-  if (!isClockedIn()) {
-    alert('Please clock in first before marking a house.');
-    return;
-  }
+  if (!currentRoute.clockIn) { alert('Please clock in before marking any houses.'); return; }
+  if (isOnBreak()) { alert('You are on break. End your break before marking a house.'); return; }
+  if (currentRoute.clockOut) { alert('You have already clocked out.'); return; }
   db.collection('routes').doc(String(currentRoute.id))
     .update({ liveStopIdx: idx, liveUpdatedAt: new Date().toISOString() })
     .catch(e => console.warn('liveStopIdx update failed:', e));
@@ -685,7 +757,9 @@ function selectMapStop(i) {
 }
 
 function openMapStatusPicker() {
-  if (!isClockedIn()) { alert('Please clock in first before marking a house.'); return; }
+  if (!currentRoute.clockIn) { alert('Please clock in before marking any houses.'); return; }
+  if (isOnBreak()) { alert('You are on break. End your break before marking a house.'); return; }
+  if (currentRoute.clockOut) { alert('You have already clocked out.'); return; }
   if (mapSelectedIdx !== null) openStatusPicker(mapSelectedIdx);
 }
 
