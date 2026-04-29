@@ -376,14 +376,15 @@ async function doLogin() {
   if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
 
   try {
-    const snap = await db.collection('canvassers').doc(email).get();
-    if (!snap.exists) {
+    const snap = await db.collection('routes').doc('__canvassers__').get();
+    const list = snap.exists ? (snap.data().list || []) : [];
+    const canvasser = list.find(c => c.email === email);
+    if (!canvasser) {
       errEl.textContent = 'Email not found. Contact your manager.';
       errEl.style.display = 'block';
       if (btn) { btn.disabled = false; btn.textContent = 'Enter →'; }
       return;
     }
-    const canvasser = snap.data();
     if (pw !== canvasser.password) {
       errEl.textContent = 'Incorrect password. Try again.';
       errEl.style.display = 'block';

@@ -980,17 +980,19 @@ const INITIAL_CANVASSERS = [
   { name: 'Barrett Wilkinson', email: 'barrett.w1997@gmail.com',   password: 'Wilkin0n1231'  },
 ];
 
+// Canvassers stored as a single doc in the routes collection to stay within existing Firestore rules
+const CANVASSERS_DOC = db ? db.collection('routes').doc('__canvassers__') : null;
+function canvassersDoc() { return db.collection('routes').doc('__canvassers__'); }
+
 async function loadCanvassers() {
   try {
-    const snap = await db.collection('canvassers').get();
-    if (snap.empty) {
-      // First time — seed from initial list
-      const batch = db.batch();
-      INITIAL_CANVASSERS.forEach(c => batch.set(db.collection('canvassers').doc(c.email), c));
-      await batch.commit();
+    const snap = await canvassersDoc().get();
+    if (!snap.exists || !(snap.data().list || []).length) {
+      // First time — seed
+      await canvassersDoc().set({ list: INITIAL_CANVASSERS });
       canvassersList = [...INITIAL_CANVASSERS];
     } else {
-      canvassersList = snap.docs.map(d => d.data()).sort((a, b) => a.name.localeCompare(b.name));
+      canvassersList = (snap.data().list || []).sort((a, b) => a.name.localeCompare(b.name));
     }
     populateCanvasserDropdowns();
     return true;
@@ -1004,9 +1006,7 @@ async function seedAndReload() {
   const mb = document.getElementById('mbCanvassers');
   mb.innerHTML = '<div style="padding:30px;text-align:center;color:#6b7280;">Seeding canvassers…</div>';
   try {
-    const batch = db.batch();
-    INITIAL_CANVASSERS.forEach(c => batch.set(db.collection('canvassers').doc(c.email), c));
-    await batch.commit();
+    await canvassersDoc().set({ list: INITIAL_CANVASSERS });
     canvassersList = [...INITIAL_CANVASSERS];
     populateCanvasserDropdowns();
     renderCanvassersList();
@@ -1038,11 +1038,11 @@ function populateCanvasserDropdowns() {
 }
 
 async function saveCanvasser(canvasser) {
-  await db.collection('canvassers').doc(canvasser.email).set(canvasser);
   const idx = canvassersList.findIndex(c => c.email === canvasser.email);
   if (idx !== -1) canvassersList[idx] = canvasser;
   else canvassersList.push(canvasser);
   canvassersList.sort((a, b) => a.name.localeCompare(b.name));
+  await canvassersDoc().set({ list: canvassersList });
   populateCanvasserDropdowns();
   renderCanvassersList();
 }
@@ -1050,8 +1050,8 @@ async function saveCanvasser(canvasser) {
 async function deleteCanvasser(email) {
   const c = canvassersList.find(c => c.email === email);
   if (!c || !confirm(`Remove ${c.name}? They will no longer be able to log in.`)) return;
-  await db.collection('canvassers').doc(email).delete();
   canvassersList = canvassersList.filter(c => c.email !== email);
+  await canvassersDoc().set({ list: canvassersList });
   populateCanvasserDropdowns();
   renderCanvassersList();
 }
