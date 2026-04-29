@@ -2874,6 +2874,27 @@ async function autoSendNotHomeStops(route) {
 }
 
 // ── REPORTS ──────────────────────────────────────
+function formatGap(secs) {
+  if (secs === undefined || secs === null) return '';
+  if (secs < 60) return secs + 's';
+  const m = Math.floor(secs / 60), s = secs % 60;
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
+
+function gapStyle(secs) {
+  if (secs === undefined || secs === null) return '';
+  if (secs < 120) return 'background:#fee2e2;border-left:3px solid #dc2626;'; // red — under 2 min
+  if (secs < 240) return 'background:#fef9c3;border-left:3px solid #ca8a04;'; // amber — under 4 min
+  return '';
+}
+
+function gapBadge(secs) {
+  if (secs === undefined || secs === null) return '';
+  if (secs < 120) return `<span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;background:#dc2626;color:#fff;margin-top:2px;">⚠️ +${formatGap(secs)}</span>`;
+  if (secs < 240) return `<span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;background:#ca8a04;color:#fff;margin-top:2px;">+${formatGap(secs)}</span>`;
+  return `<span style="font-size:10px;color:#9ca3af;margin-top:2px;">+${formatGap(secs)}</span>`;
+}
+
 function formatStatusTime(iso) {
   if (!iso) return '';
   try {
@@ -2969,14 +2990,31 @@ function renderReport() {
     return true;
   });
 
-  // Flatten stops, filter by status
-  const allStops = [];
+  // Flatten stops (all statuses needed for gap calc, filter after)
+  const allStopsUnfiltered = [];
   routes.forEach(r => {
     (r.stops||[]).forEach((s,i) => {
-      if (filterStatus && s.status !== filterStatus) return;
-      allStops.push({ ...s, routeId: r.id, routeName: r.name, canvasser: r.canvasser||'Unassigned', routeDate: r.date, stopNum: i+1, startTime: r.startTime||'', endTime: r.endTime||'' });
+      allStopsUnfiltered.push({ ...s, routeId: r.id, routeName: r.name, canvasser: r.canvasser||'Unassigned', routeDate: r.date, stopNum: i+1, startTime: r.startTime||'', endTime: r.endTime||'' });
     });
   });
+
+  // Calculate time gaps between consecutive marked stops within each route (sorted by statusAt)
+  const byRoute = {};
+  allStopsUnfiltered.forEach(s => {
+    if (!s.statusAt) return;
+    if (!byRoute[s.routeId]) byRoute[s.routeId] = [];
+    byRoute[s.routeId].push(s);
+  });
+  Object.values(byRoute).forEach(stops => {
+    stops.sort((a, b) => new Date(a.statusAt) - new Date(b.statusAt));
+    stops.forEach((s, i) => {
+      if (i === 0) return;
+      s._gapSecs = Math.round((new Date(s.statusAt) - new Date(stops[i-1].statusAt)) / 1000);
+    });
+  });
+
+  // Now filter by status
+  const allStops = allStopsUnfiltered.filter(s => !filterStatus || s.status === filterStatus);
   currentReportStops = allStops;
 
   // Show/hide Send to Google Sheets button
@@ -3041,7 +3079,7 @@ function renderReport() {
   }
 
   resultsEl.innerHTML = allStops.map(s => `
-    <div class="rpt-row">
+    <div class="rpt-row" style="${gapStyle(s._gapSecs)}">
       <div class="rr-num">${s.stopNum}</div>
       <div class="rr-addr">
         <div class="rr-street">${x(s.street)}</div>
@@ -3053,6 +3091,7 @@ function renderReport() {
       <div class="rr-status" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
         ${s.status ? `<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;background:${statusBg(s.status)};color:${statusColor(s.status)};">${x(s.status)}</span>` : '<span style="font-size:11px;color:#ccc;">—</span>'}
         ${s.statusAt ? `<span style="font-size:10px;color:#6b7280;">${formatStatusTime(s.statusAt)}</span>` : ''}
+        ${gapBadge(s._gapSecs)}
         ${s.mailSent ? `<span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;background:#e0f2fe;color:#0369a1;">✉ Mail Sent</span>` : ''}
       </div>
     </div>`).join('');
@@ -3062,12 +3101,16 @@ function exportReportCSV() {
   const filterCanvasser = document.getElementById('rptCanvasser').value;
   const filterStatus    = document.getElementById('rptStatus').value;
   const allRoutes = getSavedRoutes();
-  const rows = [['Stop#','Street','City','Full Address','Status','Marked At','Note','Route','Canvasser','Date','Start Time','End Time']];
+  const rows = [['Stop#','Street','City','Full Address','Status','Marked At','Gap From Prev','Note','Route','Canvasser','Date','Start Time','End Time']];
   allRoutes.forEach(r => {
     if (filterCanvasser && r.canvasser !== filterCanvasser) return;
+    const stopsForGap = (r.stops||[]).filter(s => s.statusAt).sort((a,b) => new Date(a.statusAt)-new Date(b.statusAt));
+    const gapSecsByAddr = {};
+    stopsForGap.forEach((s,i) => { if (i > 0) gapSecsByAddr[s.fullAddress] = Math.round((new Date(s.statusAt)-new Date(stopsForGap[i-1].statusAt))/1000); });
     (r.stops||[]).forEach((s,i) => {
       if (filterStatus && s.status !== filterStatus) return;
-      rows.push([i+1, s.street, s.city, s.fullAddress, s.status||'', s.statusAt ? formatStatusTime(s.statusAt) : '', s.note||'', r.name, r.canvasser||'', r.date, r.startTime||'', r.endTime||'']);
+      const g = gapSecsByAddr[s.fullAddress];
+      rows.push([i+1, s.street, s.city, s.fullAddress, s.status||'', s.statusAt ? formatStatusTime(s.statusAt) : '', g !== undefined ? formatGap(g) : '', s.note||'', r.name, r.canvasser||'', r.date, r.startTime||'', r.endTime||'']);
     });
   });
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
