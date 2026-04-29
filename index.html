@@ -561,6 +561,19 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
       <span>📂 Saved Routes</span>
       <button onclick="closeSavedRoutes()">×</button>
     </div>
+    <div style="display:flex;gap:8px;padding:10px 14px 6px;border-bottom:1px solid var(--rule);flex-wrap:wrap;">
+      <select id="srFilterCanvasser" onchange="renderSavedRoutes()" style="flex:1;min-width:140px;font-size:12px;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;color:var(--ink);background:#fff;">
+        <option value="">All Canvassers</option>
+        <option value="Meleah Thompson">Meleah Thompson</option>
+        <option value="Benjamin Chabot">Benjamin Chabot</option>
+        <option value="Brayden Owen">Brayden Owen</option>
+        <option value="Teddy Noel">Teddy Noel</option>
+        <option value="Josiah Abeyta">Josiah Abeyta</option>
+        <option value="Barrett Wilkinson">Barrett Wilkinson</option>
+      </select>
+      <input id="srFilterSearch" type="text" placeholder="Search route name…" oninput="renderSavedRoutes()" style="flex:2;min-width:140px;font-size:12px;padding:5px 8px;border:1px solid #d1d5db;border-radius:5px;color:var(--ink);" />
+      <button onclick="clearSrFilters()" style="font-size:11px;padding:5px 10px;border:1px solid #d1d5db;border-radius:5px;background:#f9fafb;color:#6b7280;cursor:pointer;white-space:nowrap;">↺ Reset</button>
+    </div>
     <div class="mb" id="mbSaved"></div>
     <div class="mf">
       <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeSavedRoutes()">Close</button>
@@ -2089,16 +2102,39 @@ function openSavedRoutes() {
 function closeSavedRoutes() { document.getElementById('ovSaved').classList.remove('on'); }
 document.getElementById('ovSaved').addEventListener('click', e => { if (e.target === e.currentTarget) closeSavedRoutes(); });
 
+function clearSrFilters() {
+  const c = document.getElementById('srFilterCanvasser');
+  const s = document.getElementById('srFilterSearch');
+  if (c) c.value = '';
+  if (s) s.value = '';
+  renderSavedRoutes();
+}
+
 function renderSavedRoutes() {
-  const routes = getSavedRoutes();
+  const allRoutes = getSavedRoutes();
   const mb = document.getElementById('mbSaved');
 
-  if (!routes.length) {
+  if (!allRoutes.length) {
     mb.innerHTML = `<div class="sr-empty">📭<br><br>No saved routes yet.<br>Build a route and click <b>💾 Save</b> in the sidebar to save it here.</div>`;
     return;
   }
 
-  mb.innerHTML = routes.map(r => {
+  // Read filters
+  const filterCanvasser = (document.getElementById('srFilterCanvasser')?.value || '').toLowerCase();
+  const filterSearch    = (document.getElementById('srFilterSearch')?.value || '').toLowerCase().trim();
+
+  const routes = allRoutes.filter(r => {
+    if (filterCanvasser && (r.canvasser||'').toLowerCase() !== filterCanvasser) return false;
+    if (filterSearch && !r.name.toLowerCase().includes(filterSearch)) return false;
+    return true;
+  });
+
+  if (!routes.length) {
+    mb.innerHTML = `<div class="sr-empty">📭 No routes match your filters.</div>`;
+    return;
+  }
+
+  function buildCard(r) {
     const done = (r.stops || []).filter(s => s.status).length;
     const total = (r.stops || []).length;
     const pct = total ? Math.round(done/total*100) : 0;
@@ -2108,7 +2144,7 @@ function renderSavedRoutes() {
     <div class="sr-item" id="src_${r.id}">
       <div class="sr-top">
         <div style="flex:1;">
-          <div style="display:flex;align-items:center;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <div class="sr-name">${x(r.name)}</div>
             ${isCompleted ? `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;background:#dbeafe;color:#1d4ed8;">✔ Completed</span>` : (live ? `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;background:#dcfce7;color:#15803d;">🟢 LIVE</span>` : '')}
             <button onclick="renameRoute(${r.id})" style="background:none;border:1px solid #d4cfc5;border-radius:3px;font-size:10px;padding:1px 6px;cursor:pointer;color:#6b7280;" title="Rename">✏️ Rename</button>
@@ -2142,7 +2178,34 @@ function renderSavedRoutes() {
         <button class="btn br" onclick="deleteSaved(${r.id})">🗑 Delete</button>
       </div>
     </div>`;
-  }).join('');
+  }
+
+  // Split into active and completed
+  const active    = routes.filter(r => !r.completed && (r.stops||[]).filter(s=>s.status).length < (r.stops||[]).length);
+  const completed = routes.filter(r =>  r.completed || (r.stops||[]).length > 0 && (r.stops||[]).filter(s=>s.status).length === (r.stops||[]).length);
+
+  // Active: live routes first, then by id desc (newest first)
+  active.sort((a, b) => {
+    const aLive = !!liveTrackingData[String(a.id)];
+    const bLive = !!liveTrackingData[String(b.id)];
+    if (aLive !== bLive) return aLive ? -1 : 1;
+    return b.id - a.id;
+  });
+  completed.sort((a, b) => b.id - a.id);
+
+  let html = '';
+
+  if (active.length) {
+    html += `<div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.5px;padding:8px 2px 4px;text-transform:uppercase;">Active Routes (${active.length})</div>`;
+    html += active.map(buildCard).join('');
+  }
+
+  if (completed.length) {
+    html += `<div style="font-size:11px;font-weight:700;color:#6b7280;letter-spacing:.5px;padding:${active.length ? '16px' : '8px'} 2px 4px;text-transform:uppercase;border-top:${active.length ? '2px solid var(--rule)' : 'none'};margin-top:${active.length ? '8px' : '0'};">Completed Routes (${completed.length})</div>`;
+    html += completed.map(buildCard).join('');
+  }
+
+  mb.innerHTML = html;
 }
 
 function focusSaved(id) {
