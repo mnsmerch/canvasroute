@@ -981,8 +981,8 @@ const INITIAL_CANVASSERS = [
 ];
 
 // Canvassers stored as a single doc in the routes collection to stay within existing Firestore rules
-const CANVASSERS_DOC = db ? db.collection('routes').doc('__canvassers__') : null;
-function canvassersDoc() { return db.collection('routes').doc('__canvassers__'); }
+const CANVASSERS_DOC = db ? db.collection('routes').doc('_team') : null;
+function canvassersDoc() { return db.collection('routes').doc('_team'); }
 
 async function loadCanvassers() {
   try {
@@ -1011,7 +1011,7 @@ async function seedAndReload() {
   const mb = document.getElementById('mbCanvassers');
   mb.innerHTML = '<div style="padding:30px;text-align:center;color:#6b7280;">Seeding canvassers…</div>';
   try {
-    await db.collection('routes').doc('__canvassers__').set({ list: INITIAL_CANVASSERS });
+    await db.collection('routes').doc('_team').set({ list: INITIAL_CANVASSERS });
     canvassersList = [...INITIAL_CANVASSERS];
     populateCanvasserDropdowns();
     renderCanvassersList();
