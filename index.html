@@ -943,6 +943,18 @@ function setupLiveTracking() {
           updatedAt: data.liveUpdatedAt || ''
         };
       }
+      // Keep routesCache in sync with live Firebase changes
+      const cacheIdx = routesCache.findIndex(r => String(r.id) === key);
+      if (cacheIdx !== -1) routesCache[cacheIdx] = data;
+      // If review modal is open for this route, refresh timestamps live
+      if (reviewRouteId === data.id && document.getElementById('ovReview').classList.contains('on')) {
+        (data.stops || []).forEach((s, i) => {
+          const row = document.getElementById('rvi_' + i);
+          if (!row) return;
+          const tsEl = row.querySelector('.rv-status-time');
+          if (tsEl) tsEl.textContent = s.statusAt ? '\uD83D\uDD50 ' + formatStatusTime(s.statusAt) : '';
+        });
+      }
     });
     if (document.getElementById('ovSaved').classList.contains('on')) renderSavedRoutes();
   }, err => console.warn('live tracking snapshot error:', err));
@@ -2574,6 +2586,7 @@ function openReview(id) {
             <div class="st">${x(s.street)}</div>
             <div class="ci">${x(s.city)}</div>
             ${s.note ? `<div class="nt">📝 ${x(s.note)}</div>` : ''}
+            <div class="rv-status-time" style="font-size:10px;color:#6b7280;margin-top:2px;">${s.statusAt ? '\uD83D\uDD50 ' + formatStatusTime(s.statusAt) : ''}</div>
           </div>
         </div>
         <div class="rv-btns">
@@ -2600,10 +2613,14 @@ function setStopStatus(idx, val) {
 
 function _applyStopStatus(idx, val) {
   if (!window._rvStatuses) window._rvStatuses = {};
+  if (!window._rvStatusTimes) window._rvStatusTimes = {};
   window._rvStatuses[idx] = val;
+  if (val) window._rvStatusTimes[idx] = new Date().toISOString();
   const row = document.getElementById('rvi_' + idx);
   if (!row) return;
   row.classList.toggle('has-status', !!val);
+  const tsEl = row.querySelector('.rv-status-time');
+  if (tsEl) tsEl.textContent = val && window._rvStatusTimes[idx] ? '\uD83D\uDD50 ' + formatStatusTime(window._rvStatusTimes[idx]) : '';
   const btnsDiv = row.querySelector('.rv-btns');
   const paintDetail = (window._rvPaintDetails || {})[idx];
   const paintTag = (val === 'Not Home' && paintDetail && (paintDetail.issues.length || paintDetail.side))
@@ -2806,6 +2823,7 @@ function saveReview() {
   route.stops.forEach((s, i) => {
     if (window._rvStatuses && window._rvStatuses[i] !== undefined) {
       s.status = window._rvStatuses[i];
+      if (window._rvStatusTimes && window._rvStatusTimes[i]) s.statusAt = window._rvStatusTimes[i];
     }
     if (window._rvPaintDetails && window._rvPaintDetails[i]) {
       s.paintIssues = window._rvPaintDetails[i].issues;
@@ -2814,6 +2832,7 @@ function saveReview() {
     }
   });
   window._rvStatuses = {};
+  window._rvStatusTimes = {};
   window._rvPaintDetails = {};
   const st = document.getElementById('rvStartTime')?.value;
   const et = document.getElementById('rvEndTime')?.value;
