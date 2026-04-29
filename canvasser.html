@@ -158,6 +158,7 @@
   <div class="current-banner" id="currentBanner">
     📍 Currently on: <strong id="currentBannerText"></strong>
   </div>
+  <div id="clockBar"></div>
   <div class="view-map-banner" onclick="openRouteMap()">
     <span style="font-size:26px;">🗺️</span>
     <div style="flex:1;">
@@ -482,6 +483,9 @@ function renderDetailStops() {
   document.getElementById('progressBar').style.width = `${pct}%`;
   document.getElementById('progressBar').style.background = pct === 100 ? '#10b981' : '#6b3fa0';
 
+  // Clock bar
+  renderClockBar();
+
   // Current stop banner
   const liveIdx = currentRoute.liveStopIdx;
   const banner = document.getElementById('currentBanner');
@@ -528,9 +532,132 @@ function renderDetailStops() {
   }).join('');
 }
 
+// ── CLOCK IN / OUT ────────────────────────────────
+function isClockedIn() {
+  return !!(currentRoute && currentRoute.clockIn && !currentRoute.clockOut);
+}
+
+function formatClockTime(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function clockLocationLink(lat, lng) {
+  if (!lat || !lng) return '';
+  return `<a href="https://maps.google.com/?q=${lat},${lng}" target="_blank" style="color:inherit;text-decoration:underline;font-size:10px;">📍 View Location</a>`;
+}
+
+function renderClockBar() {
+  const bar = document.getElementById('clockBar');
+  if (!bar || !currentRoute) return;
+  const ci = currentRoute.clockIn;
+  const co = currentRoute.clockOut;
+
+  if (co) {
+    bar.innerHTML = `
+      <div style="background:#f1f5f9;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:10px 14px;display:flex;align-items:center;gap:10px;">
+        <div style="flex:1;">
+          <div style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.5px;">SHIFT COMPLETE</div>
+          <div style="font-size:12px;color:#475569;margin-top:2px;">
+            In: ${formatClockTime(ci.time)} ${clockLocationLink(ci.lat, ci.lng)}
+            &nbsp;·&nbsp; Out: ${formatClockTime(co.time)} ${clockLocationLink(co.lat, co.lng)}
+          </div>
+        </div>
+      </div>`;
+  } else if (ci) {
+    bar.innerHTML = `
+      <div style="background:#ecfdf5;border-top:2px solid #10b981;border-bottom:1px solid #a7f3d0;padding:10px 14px;display:flex;align-items:center;gap:10px;">
+        <div style="flex:1;">
+          <div style="font-size:10px;font-weight:700;color:#065f46;letter-spacing:.5px;">🟢 CLOCKED IN</div>
+          <div style="font-size:12px;color:#047857;margin-top:2px;">Since ${formatClockTime(ci.time)} ${clockLocationLink(ci.lat, ci.lng)}</div>
+        </div>
+        <button id="clockOutBtn" onclick="doClockOut()" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0;">🔴 Clock Out</button>
+      </div>`;
+  } else {
+    bar.innerHTML = `
+      <div style="padding:10px 14px;background:#fff7ed;border-top:2px solid #f97316;border-bottom:1px solid #fed7aa;">
+        <button id="clockInBtn" onclick="doClockIn()" style="width:100%;background:#15803d;color:#fff;border:none;border-radius:10px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;letter-spacing:.3px;">🟢 Clock In to Start</button>
+        <div style="font-size:11px;color:#9a3412;text-align:center;margin-top:6px;">You must clock in before marking any houses.</div>
+      </div>`;
+  }
+}
+
+async function getLocation() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      ()  => resolve(null),
+      { timeout: 10000, enableHighAccuracy: true }
+    );
+  });
+}
+
+async function doClockIn() {
+  if (!currentRoute || currentRoute.clockIn) return;
+  const btn = document.getElementById('clockInBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Getting your location…'; }
+  const loc = await getLocation();
+  const clockIn = { time: new Date().toISOString(), lat: loc ? loc.lat : null, lng: loc ? loc.lng : null };
+  try {
+    await db.collection('routes').doc(String(currentRoute.id)).update({ clockIn });
+  } catch(e) {
+    alert('Failed to clock in. Check your connection and try again.');
+    if (btn) { btn.disabled = false; btn.textContent = '🟢 Clock In to Start'; }
+  }
+}
+
+async function doClockOut() {
+  if (!currentRoute || !currentRoute.clockIn || currentRoute.clockOut) return;
+  if (!confirm('Clock out and end your shift?')) return;
+  const btn = document.getElementById('clockOutBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Getting location…'; }
+
+  const loc = await getLocation();
+  const clockOut = { time: new Date().toISOString(), lat: loc ? loc.lat : null, lng: loc ? loc.lng : null };
+
+  const stops = currentRoute.stops || [];
+  const unvisited = stops.filter(s => !s.status);
+
+  try {
+    await db.collection('routes').doc(String(currentRoute.id)).update({ clockOut, completed: true });
+
+    if (unvisited.length > 0) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dateStr = tomorrow.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+      const newId = Date.now();
+      const contRoute = {
+        id: newId,
+        name: `Continuation from ${currentRoute.name}`,
+        canvasser: currentRoute.canvasser,
+        date: dateStr,
+        stops: unvisited,
+        stopCount: unvisited.length,
+        completed: false,
+        continuationFrom: currentRoute.id,
+        continuationFromName: currentRoute.name,
+        startTime: '',
+        endTime: ''
+      };
+      await db.collection('routes').doc(String(newId)).set(contRoute);
+      alert(`✅ Clocked out!\n\n${unvisited.length} remaining stop${unvisited.length !== 1 ? 's' : ''} saved as:\n"Continuation from ${currentRoute.name}"\nscheduled for ${dateStr}.`);
+    } else {
+      alert('✅ Clocked out! All stops completed. Great work!');
+    }
+  } catch(e) {
+    alert('Failed to clock out. Check your connection and try again.');
+    if (btn) { btn.disabled = false; btn.textContent = '🔴 Clock Out'; }
+  }
+}
+
 // ── STOP TAP (list view) ──────────────────────────
 function tappedStop(idx) {
   if (!currentRoute) return;
+  if (!isClockedIn()) {
+    alert('Please clock in first before marking a house.');
+    return;
+  }
   db.collection('routes').doc(String(currentRoute.id))
     .update({ liveStopIdx: idx, liveUpdatedAt: new Date().toISOString() })
     .catch(e => console.warn('liveStopIdx update failed:', e));
@@ -558,6 +685,7 @@ function selectMapStop(i) {
 }
 
 function openMapStatusPicker() {
+  if (!isClockedIn()) { alert('Please clock in first before marking a house.'); return; }
   if (mapSelectedIdx !== null) openStatusPicker(mapSelectedIdx);
 }
 

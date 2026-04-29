@@ -2166,6 +2166,19 @@ function renderSavedRoutes() {
           </div>
           ${!isCompleted && live ? `<div style="margin-top:5px;font-size:11px;color:#059669;font-weight:700;">📍 ${x(live.canvasser)} is on stop ${live.stopIdx+1}: ${x(live.stopAddr)} <span style="color:#9ca3af;font-weight:400;font-size:10px;">(${timeAgo(live.updatedAt)})</span></div>` : ''}
           ${done > 0 ? `<div style="margin-top:4px;font-size:10px;color:#6b3fa0;font-weight:700;">✅ ${done}/${total} stops reviewed (${pct}%)</div>` : ''}
+          ${r.continuationFromName ? `<div style="margin-top:4px;font-size:10px;color:#0369a1;font-weight:700;">🔗 Continuation from "${x(r.continuationFromName)}"</div>` : ''}
+          ${(() => {
+            const ci = r.clockIn, co = r.clockOut;
+            if (!ci) return '';
+            const ciTime = formatStatusTime(ci.time);
+            const ciLink = ci.lat ? `<a href="https://maps.google.com/?q=${ci.lat},${ci.lng}" target="_blank" style="color:#0369a1;font-size:10px;">📍 map</a>` : '';
+            if (co) {
+              const coTime = formatStatusTime(co.time);
+              const coLink = co.lat ? `<a href="https://maps.google.com/?q=${co.lat},${co.lng}" target="_blank" style="color:#dc2626;font-size:10px;">📍 map</a>` : '';
+              return `<div style="margin-top:4px;font-size:10px;color:#374151;">🟢 In: <strong>${ciTime}</strong> ${ciLink} &nbsp;·&nbsp; 🔴 Out: <strong>${coTime}</strong> ${coLink}</div>`;
+            }
+            return `<div style="margin-top:4px;font-size:10px;color:#059669;">🟢 Clocked in at <strong>${ciTime}</strong> ${ciLink}</div>`;
+          })()}
         </div>
       </div>
       <div class="sr-actions">
@@ -2621,10 +2634,24 @@ function openReview(id) {
   document.getElementById('reviewTitle').innerHTML = `📋 Review Results — ${x(route.name)} <button onclick="closeReview()">×</button>`;
 
   const mb = document.getElementById('mbReview');
+  const ciAdmin = route.clockIn, coAdmin = route.clockOut;
+  const clockBadge = (() => {
+    if (!ciAdmin) return '';
+    const ciT = formatStatusTime(ciAdmin.time);
+    const ciL = ciAdmin.lat ? `<a href="https://maps.google.com/?q=${ciAdmin.lat},${ciAdmin.lng}" target="_blank" style="color:#0369a1;">📍</a>` : '';
+    if (coAdmin) {
+      const coT = formatStatusTime(coAdmin.time);
+      const coL = coAdmin.lat ? `<a href="https://maps.google.com/?q=${coAdmin.lat},${coAdmin.lng}" target="_blank" style="color:#dc2626;">📍</a>` : '';
+      return `<div style="margin-top:6px;padding:7px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;color:#374151;">🟢 Clocked in: <strong>${ciT}</strong> ${ciL} &nbsp;·&nbsp; 🔴 Clocked out: <strong>${coT}</strong> ${coL}</div>`;
+    }
+    return `<div style="margin-top:6px;padding:7px 10px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;font-size:11px;color:#065f46;">🟢 Clocked in at <strong>${ciT}</strong> ${ciL} — currently active</div>`;
+  })();
+
   mb.innerHTML = `
     <div style="padding:10px 0 6px;font-size:12px;color:#555;">
       👤 <strong>${x(route.canvasser||'Unassigned')}</strong> &nbsp;·&nbsp; 📅 ${route.date} &nbsp;·&nbsp; 📍 ${route.stops.length} stops<br>
       <span style="font-size:11px;color:#888;margin-top:4px;display:block;">Set start/end time and a result for each stop, then click <b>Save Results</b>.</span>
+      ${clockBadge}
     </div>
     <div style="background:#f0e8ff;border:1px solid #c4b5fd;border-radius:6px;padding:10px 14px;margin-bottom:12px;">
       <div style="font-size:11px;font-weight:700;color:#5b21b6;margin-bottom:8px;">⏱ SHIFT TIMING</div>
