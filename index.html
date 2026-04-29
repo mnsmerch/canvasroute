@@ -998,6 +998,11 @@ async function loadCanvassers() {
     return true;
   } catch(e) {
     console.warn('Failed to load canvassers:', e);
+    window._canvLoadErr = e.message || String(e);
+    setTimeout(() => {
+      const el = document.getElementById('canvLoadErr');
+      if (el) el.textContent = 'Error: ' + window._canvLoadErr;
+    }, 100);
     return false;
   }
 }
@@ -1006,12 +1011,14 @@ async function seedAndReload() {
   const mb = document.getElementById('mbCanvassers');
   mb.innerHTML = '<div style="padding:30px;text-align:center;color:#6b7280;">Seeding canvassers…</div>';
   try {
-    await canvassersDoc().set({ list: INITIAL_CANVASSERS });
+    await db.collection('routes').doc('__canvassers__').set({ list: INITIAL_CANVASSERS });
     canvassersList = [...INITIAL_CANVASSERS];
     populateCanvasserDropdowns();
     renderCanvassersList();
   } catch(e) {
-    mb.innerHTML = `<div style="padding:20px;text-align:center;color:#dc2626;">Failed to seed: ${e.message}</div>`;
+    mb.innerHTML = `<div style="padding:20px;text-align:center;color:#dc2626;">Failed: ${e.message}<br><br>
+      <small>Check browser console (F12) for details.</small></div>`;
+    console.error('seedAndReload error:', e);
   }
 }
 
@@ -1062,8 +1069,12 @@ async function openCanvassers() {
   mb.innerHTML = '<div style="padding:30px;text-align:center;color:#6b7280;font-size:13px;">Loading canvassers…</div>';
   const ok = await loadCanvassers();
   if (!ok) {
-    mb.innerHTML = `<div style="padding:20px;text-align:center;color:#dc2626;font-size:13px;">⚠️ Failed to load. Check your connection and try again.<br><br>
-      <button onclick="openCanvassers()" style="padding:8px 16px;background:#6b3fa0;color:#fff;border:none;border-radius:6px;cursor:pointer;">Retry</button></div>`;
+    mb.innerHTML = `<div style="padding:20px;text-align:center;color:#dc2626;font-size:13px;">⚠️ Failed to load.<br><br>
+      <span style="font-size:11px;color:#6b7280;" id="canvLoadErr"></span><br><br>
+      <button onclick="openCanvassers()" style="padding:8px 16px;background:#6b3fa0;color:#fff;border:none;border-radius:6px;cursor:pointer;">Retry</button>
+      &nbsp;
+      <button onclick="seedAndReload()" style="padding:8px 16px;background:#15803d;color:#fff;border:none;border-radius:6px;cursor:pointer;">⚡ Force Initialize</button>
+    </div>`;
     return;
   }
   renderCanvassersList();
