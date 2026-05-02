@@ -400,7 +400,11 @@ async function doLogin() {
   if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
 
   try {
-    const snap = await db.collection('routes').doc('_team').get({ source: 'server' });
+    let snap = await db.collection('routes').doc('_team').get({ source: 'server' });
+    if (!snap.exists || !(snap.data().list || []).length) {
+      await new Promise(r => setTimeout(r, 800));
+      snap = await db.collection('routes').doc('_team').get({ source: 'server' });
+    }
     const list = snap.exists ? (snap.data().list || []) : [];
     const canvasser = list.find(c => c.email === email);
     if (!canvasser) {
