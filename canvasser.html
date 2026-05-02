@@ -1483,7 +1483,6 @@ async function submitSchedule() {
 <script>
   firebase.initializeApp(FIREBASE_CONFIG);
   db = firebase.firestore();
-  db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
 
   // Auto-login from session storage
   const savedName = sessionStorage.getItem('crCanvasser');
