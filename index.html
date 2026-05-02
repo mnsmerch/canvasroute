@@ -1021,6 +1021,7 @@ async function loadCanvassers() {
 }
 
 async function seedAndReload() {
+  if (!confirm('⚠️ WARNING: This will DELETE all existing canvassers and replace them with only the 7 default accounts. Any canvassers you added manually will be permanently lost.\n\nAre you absolutely sure?')) return;
   const mb = document.getElementById('mbCanvassers');
   mb.innerHTML = '<div style="padding:30px;text-align:center;color:#6b7280;">Seeding canvassers…</div>';
   try {
@@ -1086,7 +1087,7 @@ async function openCanvassers() {
       <span style="font-size:11px;color:#6b7280;" id="canvLoadErr"></span><br><br>
       <button onclick="openCanvassers()" style="padding:8px 16px;background:#6b3fa0;color:#fff;border:none;border-radius:6px;cursor:pointer;">Retry</button>
       &nbsp;
-      <button onclick="seedAndReload()" style="padding:8px 16px;background:#15803d;color:#fff;border:none;border-radius:6px;cursor:pointer;">⚡ Force Initialize</button>
+      <button onclick="seedAndReload()" style="padding:8px 16px;background:#dc2626;color:#fff;border:none;border-radius:6px;cursor:pointer;">⚠️ Reset to Defaults (deletes all canvassers)</button>
     </div>`;
     return;
   }
@@ -1358,7 +1359,7 @@ function renderCanvassersList() {
     <div style="margin-bottom:16px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.5px;text-transform:uppercase;">Current Canvassers (${canvassersList.length})</div>
-        ${canvassersList.length === 0 ? `<button onclick="seedAndReload()" style="font-size:11px;padding:4px 10px;background:#6b3fa0;color:#fff;border:none;border-radius:5px;cursor:pointer;">⚡ Initialize List</button>` : ''}
+        ${canvassersList.length === 0 ? `<button onclick="seedAndReload()" style="font-size:11px;padding:4px 10px;background:#dc2626;color:#fff;border:none;border-radius:5px;cursor:pointer;">⚠️ Reset to Defaults</button>` : ''}
       </div>
       ${canvassersList.map(c => `
         <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--rule);border-radius:6px;margin-bottom:6px;">
