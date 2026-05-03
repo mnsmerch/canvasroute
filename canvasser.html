@@ -328,6 +328,17 @@ const STATUS_OPTS = [
   { val: 'Recently Painted',   bg: '#fef3c7', color: '#78350f' },
 ];
 
+// ── CANVASSER CREDENTIALS (local fallback) ────────
+const LOCAL_CANVASSERS = [
+  { name: 'Meleah Thompson',   email: 'meleahthompson@gmail.com',  password: 'Stunt1001'    },
+  { name: 'Benjamin Chabot',   email: 'benchabot13@gmail.com',     password: 'BChabot392'   },
+  { name: 'Brayden Owen',      email: 'bray92673@gmail.com',       password: 'Ow3n1923'     },
+  { name: 'Nevik Davis',       email: 'taterdavis07@gmail.com',    password: 'Davi51231'    },
+  { name: 'Teddy Noel',        email: 'teddyn2006@gmail.com',      password: 'N03l1231'     },
+  { name: 'Josiah Abeyta',     email: 'josiahabeyta04@gmail.com',  password: 'Ab3ta12312'   },
+  { name: 'Barrett Wilkinson', email: 'barrett.w1997@gmail.com',   password: 'Wilkin0n1231' },
+];
+
 let db;
 let teamListPromise = null;
 let currentCanvasser = null;
@@ -401,13 +412,15 @@ async function doLogin() {
   if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
 
   try {
-    // Use the pre-fetched list; if it failed, do a fresh fetch now
-    let list = await teamListPromise;
-    if (!list) {
-      const snap = await db.collection('routes').doc('_team').get({ source: 'server' });
-      list = snap.exists ? (snap.data().list || []) : [];
+    // Check local list first (instant, no network needed)
+    let canvasser = LOCAL_CANVASSERS.find(c => c.email === email);
+    // Fall back to Firestore for any canvassers added via admin panel
+    if (!canvasser) {
+      const list = await teamListPromise ||
+        await db.collection('routes').doc('_team').get({ source: 'server' })
+          .then(snap => snap.exists ? (snap.data().list || []) : []);
+      canvasser = list.find(c => c.email === email);
     }
-    const canvasser = list.find(c => c.email === email);
     if (!canvasser) {
       errEl.textContent = 'Email not found. Contact your manager.';
       errEl.style.display = 'block';
