@@ -329,6 +329,7 @@ const STATUS_OPTS = [
 ];
 
 let db;
+let teamListPromise = null;
 let currentCanvasser = null;
 let currentRoute = null;
 let routeUnsubscribe = null;
@@ -400,12 +401,12 @@ async function doLogin() {
   if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
 
   try {
-    let snap = await db.collection('routes').doc('_team').get({ source: 'server' });
-    if (!snap.exists || !(snap.data().list || []).length) {
-      await new Promise(r => setTimeout(r, 800));
-      snap = await db.collection('routes').doc('_team').get({ source: 'server' });
+    // Use the pre-fetched list; if it failed, do a fresh fetch now
+    let list = await teamListPromise;
+    if (!list) {
+      const snap = await db.collection('routes').doc('_team').get({ source: 'server' });
+      list = snap.exists ? (snap.data().list || []) : [];
     }
-    const list = snap.exists ? (snap.data().list || []) : [];
     const canvasser = list.find(c => c.email === email);
     if (!canvasser) {
       errEl.textContent = 'Email not found. Contact your manager.';
@@ -1487,6 +1488,11 @@ async function submitSchedule() {
 <script>
   firebase.initializeApp(FIREBASE_CONFIG);
   db = firebase.firestore();
+
+  // Pre-fetch team list immediately so it's ready by the time user hits login
+  teamListPromise = db.collection('routes').doc('_team').get({ source: 'server' })
+    .then(snap => snap.exists ? (snap.data().list || []) : [])
+    .catch(() => null);
 
   // Auto-login from session storage
   const savedName = sessionStorage.getItem('crCanvasser');
