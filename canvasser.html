@@ -29,6 +29,11 @@
     .topbar-title { flex: 1; font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .topbar-btn { background: rgba(255,255,255,.15); border: none; color: #fff; padding: 7px 13px; border-radius: 6px; font-size: 13px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
     .topbar-btn:active { background: rgba(255,255,255,.3); }
+    @media (max-width: 480px) {
+      .topbar { padding: 16px 14px; gap: 8px; }
+      .topbar-btn { padding: 11px 15px; font-size: 14px; border-radius: 8px; }
+      .topbar-title { font-size: 16px; }
+    }
 
     /* ── ROUTE CARDS ── */
     .route-card { background: #fff; border-radius: 10px; padding: 15px 16px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08); cursor: pointer; border-left: 4px solid #6b3fa0; }
@@ -1497,9 +1502,16 @@ async function openSchedule() {
   SCHED_DAYS_KEY.forEach(k => { schedData[k] = { off: true }; });
   schedAlreadySubmitted = false;
 
-  // Load existing submission if any
+  // Show overlay immediately so button tap feels instant
+  const btn = document.getElementById('schedSubmitBtn');
+  btn.textContent = 'Loading…';
+  btn.disabled = true;
+  renderScheduleForm();
+  document.getElementById('schedOverlay').classList.add('on');
+
+  // Load existing submission in the background, then re-render
   try {
-    const snap = await db.collection('routes').doc('_schedule').get();
+    const snap = await db.collection('routes').doc('_schedule').get({ source: 'server' });
     if (snap.exists) {
       const wk = (snap.data().weeks || {})[schedWeekKey(schedWeekMonday)];
       if (wk && wk[currentCanvasser]) {
@@ -1507,14 +1519,11 @@ async function openSchedule() {
         schedAlreadySubmitted = true;
       }
     }
-  } catch(e) { /* offline or first time — use defaults */ }
+  } catch(e) { /* offline or first time — keep defaults */ }
 
-  const btn = document.getElementById('schedSubmitBtn');
   btn.textContent = schedAlreadySubmitted ? 'Update' : 'Submit';
   btn.disabled = false;
-
   renderScheduleForm();
-  document.getElementById('schedOverlay').classList.add('on');
 }
 
 function closeSchedule() {
