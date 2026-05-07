@@ -1530,17 +1530,30 @@ function closeSchedule() {
   document.getElementById('schedOverlay').classList.remove('on');
 }
 
+// Per-day allowed windows and defaults
+const SCHED_CONSTRAINTS = {
+  mon: { min: '16:30', max: '19:30', defStart: '16:30', defEnd: '19:30' },
+  tue: { min: '16:30', max: '19:30', defStart: '16:30', defEnd: '19:30' },
+  wed: { min: '16:30', max: '19:30', defStart: '16:30', defEnd: '19:30' },
+  thu: { min: '16:30', max: '19:30', defStart: '16:30', defEnd: '19:30' },
+  fri: { min: '16:30', max: '19:30', defStart: '16:30', defEnd: '19:30' },
+  sat: { min: '13:30', max: '19:30', defStart: '13:30', defEnd: '19:30' },
+  sun: { min: '14:30', max: '19:30', defStart: '14:30', defEnd: '19:30' },
+};
+
 function renderScheduleForm() {
   const container = document.getElementById('schedDayRows');
   container.innerHTML = SCHED_DAYS.map((dayName, i) => {
     const key = SCHED_DAYS_KEY[i];
+    const c   = SCHED_CONSTRAINTS[key];
     const dayDate = new Date(schedWeekMonday);
     dayDate.setDate(schedWeekMonday.getDate() + i);
     const dateStr = dayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const d = schedData[key] || { off: true };
     const isOff = d.off !== false;
-    const start = d.start || '17:00';
-    const end   = d.end   || '19:30';
+    // Use saved times if they exist, otherwise use day-specific defaults
+    const start = d.start || c.defStart;
+    const end   = d.end   || c.defEnd;
 
     return `
     <div class="sched-day-card">
@@ -1559,13 +1572,13 @@ function renderScheduleForm() {
       <div style="display:flex;align-items:flex-end;gap:10px;margin-top:12px;">
         <div style="flex:1;">
           <div style="font-size:10px;font-weight:700;color:#6b7280;letter-spacing:.5px;margin-bottom:5px;">START TIME</div>
-          <input class="sched-time-input" type="time" value="${start}"
+          <input class="sched-time-input" type="time" value="${start}" min="${c.min}" max="${c.max}"
             onchange="setSchedTime('${key}','start',this.value)">
         </div>
         <div style="font-size:20px;color:#d1d5db;padding-bottom:10px;">–</div>
         <div style="flex:1;">
           <div style="font-size:10px;font-weight:700;color:#6b7280;letter-spacing:.5px;margin-bottom:5px;">END TIME</div>
-          <input class="sched-time-input" type="time" value="${end}"
+          <input class="sched-time-input" type="time" value="${end}" min="${c.min}" max="${c.max}"
             onchange="setSchedTime('${key}','end',this.value)">
         </div>
       </div>` : ''}
@@ -1576,7 +1589,8 @@ function renderScheduleForm() {
 function toggleSchedDay(key) {
   const d = schedData[key] || { off: true };
   if (d.off !== false) {
-    schedData[key] = { off: false, start: '17:00', end: '19:30' };
+    const c = SCHED_CONSTRAINTS[key];
+    schedData[key] = { off: false, start: c.defStart, end: c.defEnd };
   } else {
     schedData[key] = { off: true };
   }
@@ -1585,6 +1599,12 @@ function toggleSchedDay(key) {
 
 function setSchedTime(key, field, val) {
   if (!schedData[key]) schedData[key] = { off: false };
+  // Clamp to allowed window
+  const c = SCHED_CONSTRAINTS[key];
+  if (c) {
+    if (val < c.min) val = c.min;
+    if (val > c.max) val = c.max;
+  }
   schedData[key][field] = val;
 }
 
