@@ -476,6 +476,12 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
     <div id="sb">
       <div class="mob-handle" onclick="toggleMobileSidebar()"><div class="mob-handle-bar"></div></div>
       <div class="sbh">ROUTE STOPS <span class="badge" id="cnt">0</span></div>
+      <div style="padding:7px 8px 6px;border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:8px;">
+        <span style="font-size:11px;font-weight:700;color:#6b7280;letter-spacing:.5px;white-space:nowrap;">ROUTE FOR</span>
+        <select id="routeForCanvasser" onchange="onRouteCanvasserChange()" style="flex:1;padding:5px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;color:#1a2744;background:#fff;">
+          <option value="">— Select canvasser —</option>
+        </select>
+      </div>
       <div class="hint">🖱 <b>Click the map</b> to add stops. <b>Drag any pin</b> to move it — address updates automatically.</div>
       <div id="list"><div class="emp">🗺️<br><br>Search for a neighborhood above,<br>then click the map to add stops.</div></div>
       <div class="sbf">
@@ -1053,9 +1059,28 @@ function populateCanvasserDropdowns() {
     saveSel.innerHTML = `<option value="">— Select canvasser —</option>${opts}`;
     saveSel.value = cur;
   }
+  // Route for selector in sidebar
+  const routeSel = document.getElementById('routeForCanvasser');
+  if (routeSel) {
+    const cur = routeSel.value;
+    routeSel.innerHTML = `<option value="">— Select canvasser —</option>${opts}`;
+    routeSel.value = cur;
+  }
   // Re-render if modals are open
   if (document.getElementById('ovSaved').classList.contains('on')) renderSavedRoutes();
   if (document.getElementById('ovReport').classList.contains('on')) renderReport();
+}
+
+function onRouteCanvasserChange() {
+  const name = document.getElementById('routeForCanvasser').value;
+  // Keep save dialog in sync
+  const saveSel = document.getElementById('saveCanvasser');
+  if (saveSel) saveSel.value = name;
+  // Pan to their home if we have a position
+  if (!name || !canvasserHomePositions[name]) return;
+  const pos = canvasserHomePositions[name];
+  map.panTo(pos);
+  map.setZoom(13);
 }
 
 async function saveCanvasser(canvasser) {
@@ -1066,6 +1091,7 @@ async function saveCanvasser(canvasser) {
   await canvassersDoc().set({ list: canvassersList });
   populateCanvasserDropdowns();
   renderCanvassersList();
+  if (typeof loadHomeMarkers === 'function' && typeof map !== 'undefined' && map) loadHomeMarkers();
 }
 
 async function deleteCanvasser(email) {
@@ -1366,6 +1392,7 @@ function renderCanvassersList() {
           <div style="flex:1;min-width:0;">
             <div style="font-weight:700;font-size:13px;color:#1a2744;">${x(c.name)}</div>
             <div style="font-size:11px;color:#6b7280;margin-top:1px;">${x(c.email)}</div>
+            ${c.address ? `<div style="font-size:11px;color:#15803d;margin-top:1px;">🏠 ${x(c.address)}</div>` : ''}
           </div>
           <button onclick="openEditCanvasser('${x(c.email)}')" style="font-size:11px;padding:4px 10px;border:1px solid #d1d5db;border-radius:5px;background:#f9fafb;color:#374151;cursor:pointer;">✏️ Edit</button>
           <button onclick="deleteCanvasser('${x(c.email)}')" style="font-size:11px;padding:4px 10px;border:1px solid #fca5a5;border-radius:5px;background:#fef2f2;color:#dc2626;cursor:pointer;">🗑 Remove</button>
@@ -1373,9 +1400,10 @@ function renderCanvassersList() {
     </div>
     <div style="background:#f8f7ff;border:1px solid #e0d9ff;border-radius:8px;padding:14px;" id="canvasserFormWrap">
       <div style="font-size:11px;font-weight:700;color:#5b21b6;letter-spacing:.5px;margin-bottom:10px;text-transform:uppercase;" id="canvasserFormTitle">➕ Add New Canvasser</div>
-      <input id="cfName"  type="text"     placeholder="Full Name"        style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;">
-      <input id="cfEmail" type="email"    placeholder="Email Address"    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;">
-      <input id="cfPass"  type="text"     placeholder="Password"         style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:10px;display:block;">
+      <input id="cfName"    type="text"  placeholder="Full Name"                    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;">
+      <input id="cfEmail"   type="email" placeholder="Email Address"               style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;">
+      <input id="cfPass"    type="text"  placeholder="Password"                    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;">
+      <input id="cfAddress" type="text"  placeholder="Home Address (optional)"     style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:10px;display:block;" title="Used for the home pin on the map">
       <input id="cfEditEmail" type="hidden" value="">
       <div style="display:flex;gap:8px;">
         <button onclick="submitCanvasserForm()" style="flex:1;padding:10px;background:#6b3fa0;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Save</button>
@@ -1388,9 +1416,10 @@ function renderCanvassersList() {
 function openEditCanvasser(email) {
   const c = canvassersList.find(c => c.email === email);
   if (!c) return;
-  document.getElementById('cfName').value  = c.name;
-  document.getElementById('cfEmail').value = c.email;
-  document.getElementById('cfPass').value  = c.password;
+  document.getElementById('cfName').value    = c.name;
+  document.getElementById('cfEmail').value   = c.email;
+  document.getElementById('cfPass').value    = c.password;
+  document.getElementById('cfAddress').value = c.address || '';
   document.getElementById('cfEditEmail').value = c.email;
   document.getElementById('cfEmail').disabled = true; // email is the key, can't change
   document.getElementById('canvasserFormTitle').textContent = `✏️ Edit — ${c.name}`;
@@ -1400,9 +1429,10 @@ function openEditCanvasser(email) {
 }
 
 function resetCanvasserForm() {
-  document.getElementById('cfName').value  = '';
-  document.getElementById('cfEmail').value = '';
-  document.getElementById('cfPass').value  = '';
+  document.getElementById('cfName').value    = '';
+  document.getElementById('cfEmail').value   = '';
+  document.getElementById('cfPass').value    = '';
+  document.getElementById('cfAddress').value = '';
   document.getElementById('cfEditEmail').value = '';
   document.getElementById('cfEmail').disabled = false;
   document.getElementById('canvasserFormTitle').textContent = '➕ Add New Canvasser';
@@ -1414,6 +1444,7 @@ async function submitCanvasserForm() {
   const name     = document.getElementById('cfName').value.trim();
   const email    = document.getElementById('cfEmail').value.trim().toLowerCase();
   const password = document.getElementById('cfPass').value.trim();
+  const address  = document.getElementById('cfAddress').value.trim();
   const editEmail= document.getElementById('cfEditEmail').value;
   const errEl    = document.getElementById('cfError');
 
@@ -1429,7 +1460,7 @@ async function submitCanvasserForm() {
   }
   errEl.style.display = 'none';
   try {
-    await saveCanvasser({ name, email, password });
+    await saveCanvasser({ name, email, password, address });
     resetCanvasserForm();
   } catch(e) {
     errEl.textContent = 'Save failed. Check your connection.'; errEl.style.display = 'block';
@@ -1497,9 +1528,8 @@ function doInitMap() {
   loadRoutesFromCloud().then(() => {
     renderList();
     loadPastMarkersFromStorage();
-    loadHomeMarkers();
     loadCompletedJobs().then(() => renderJobMarkers());
-    loadCanvassers();
+    loadCanvassers().then(() => loadHomeMarkers());
     setupLiveTracking();
     document.getElementById('loadingScreen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
@@ -1514,10 +1544,12 @@ const CANVASSER_HOMES = [
 
 let homeMarkers = [];
 let homeInfoWindow = null;
+let canvasserHomePositions = {}; // { canvasserName: { lat, lng } }
 
 function loadHomeMarkers() {
   homeMarkers.forEach(m => m.setMap(null));
   homeMarkers = [];
+  canvasserHomePositions = {};
   if (homeInfoWindow) { homeInfoWindow.close(); homeInfoWindow = null; }
   homeInfoWindow = new google.maps.InfoWindow();
 
@@ -1531,10 +1563,15 @@ function loadHomeMarkers() {
     anchor: new google.maps.Point(16, 42)
   };
 
-  CANVASSER_HOMES.forEach(({ name, address }) => {
+  // Build list from canvassers with addresses, fall back to hardcoded list for any not covered
+  const toPin = canvassersList.filter(c => c.address).map(c => ({ name: c.name, address: c.address }));
+  CANVASSER_HOMES.forEach(h => { if (!toPin.some(c => c.name === h.name)) toPin.push(h); });
+
+  toPin.forEach(({ name, address }) => {
     geocoder.geocode({ address }, (results, status) => {
       if (status !== 'OK' || !results[0]) return;
       const pos = results[0].geometry.location;
+      canvasserHomePositions[name] = { lat: pos.lat(), lng: pos.lng() };
       const marker = new google.maps.Marker({
         position: pos,
         map,
@@ -2411,7 +2448,7 @@ function openSaveDialog() {
     // New route
     const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     document.getElementById('saveRouteName').value = `Route — ${today}`;
-    document.getElementById('saveCanvasser').value = '';
+    document.getElementById('saveCanvasser').value = document.getElementById('routeForCanvasser').value;
     document.getElementById('saveDialogTitle').textContent = '💾 Save This Route';
     document.getElementById('saveDialogBtn').textContent = '💾 Save Route';
     document.getElementById('saveHint').textContent = 'Give this route a name so you can find it later.';
