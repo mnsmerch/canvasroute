@@ -446,7 +446,7 @@ async function doLogin() {
     // Fetch Firestore list (for address check + canvassers not in local list)
     let firestoreList = await teamListPromise;
     if (!firestoreList) {
-      firestoreList = await db.collection('routes').doc('_team').get({ source: 'server' })
+      firestoreList = await db.collection('team').doc('canvassers').get({ source: 'server' })
         .then(snap => snap.exists ? (snap.data().list || []) : [])
         .catch(() => null);
     }
@@ -538,12 +538,12 @@ async function submitHomeAddress() {
   spinner.style.display = 'block';
   errEl.style.display = 'none';
   try {
-    const snap = await db.collection('routes').doc('_team').get({ source: 'server' });
+    const snap = await db.collection('team').doc('canvassers').get({ source: 'server' });
     const list = snap.exists ? (snap.data().list || []) : [];
     const idx  = list.findIndex(c => c.email === pendingCanvasserEmail);
     if (idx !== -1) {
       list[idx].address = address;
-      await db.collection('routes').doc('_team').set({ list });
+      await db.collection('team').doc('canvassers').set({ list });
     }
     spinner.style.display = 'none';
     btn.style.display = 'block';
@@ -1511,7 +1511,7 @@ async function openSchedule() {
 
   // Load existing submission in the background, then re-render
   try {
-    const snap = await db.collection('routes').doc('_schedule').get({ source: 'server' });
+    const snap = await db.collection('schedule').doc('data').get({ source: 'server' });
     if (snap.exists) {
       const wk = (snap.data().weeks || {})[schedWeekKey(schedWeekMonday)];
       if (wk && wk[currentCanvasser]) {
@@ -1593,12 +1593,12 @@ async function submitSchedule() {
   btn.disabled = true;
   btn.textContent = 'Saving…';
   try {
-    const snap = await db.collection('routes').doc('_schedule').get();
+    const snap = await db.collection('schedule').doc('data').get();
     const existing = snap.exists ? (snap.data().weeks || {}) : {};
     const wk = schedWeekKey(schedWeekMonday);
     if (!existing[wk]) existing[wk] = {};
     existing[wk][currentCanvasser] = schedData;
-    await db.collection('routes').doc('_schedule').set({ weeks: existing });
+    await db.collection('schedule').doc('data').set({ weeks: existing });
     btn.textContent = 'Saved!';
     schedAlreadySubmitted = true;
     setTimeout(() => { btn.disabled = false; btn.textContent = 'Update'; }, 1800);
@@ -1617,7 +1617,7 @@ async function submitSchedule() {
   db = firebase.firestore();
 
   // Pre-fetch team list immediately so it's ready by the time user hits login
-  teamListPromise = db.collection('routes').doc('_team').get({ source: 'server' })
+  teamListPromise = db.collection('team').doc('canvassers').get({ source: 'server' })
     .then(snap => snap.exists ? (snap.data().list || []) : [])
     .catch(() => null);
 
