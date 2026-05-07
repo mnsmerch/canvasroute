@@ -134,6 +134,25 @@
   </div>
 </div>
 
+<!-- ════════ HOME ADDRESS PROMPT ════════ -->
+<div class="screen" id="screenAddress">
+  <div class="login-body">
+    <img src="https://assets.cdn.filesafe.space/nPPG7BKPRH9771vRMDZ6/media/69cc2442fd3ea27e9539fbf1.png" alt="Paint Pals" style="width:110px;height:110px;object-fit:contain;margin-bottom:12px;border-radius:16px;">
+    <div class="login-title" style="font-size:22px;">One More Step</div>
+    <div class="login-sub" style="text-align:center;line-height:1.5;margin-bottom:28px;">
+      Please enter your home address below.<br>
+      <strong style="color:#1a2744;">It's important that it's accurate</strong> —<br>
+      we use it to build your routes close to where you live.
+    </div>
+    <div class="login-form">
+      <label class="login-label" for="homeAddressInput">YOUR HOME ADDRESS</label>
+      <input class="login-select" type="text" id="homeAddressInput" placeholder="e.g. 123 Main St, Denver, CO 80203" autocomplete="street-address" style="font-size:16px;" onkeydown="if(event.key==='Enter')submitHomeAddress()">
+      <div id="addressPromptError" style="color:#ef4444;font-size:13px;margin-top:8px;display:none;"></div>
+      <button class="login-btn" id="addressSubmitBtn" style="margin-top:14px;" onclick="submitHomeAddress()">Save & Continue →</button>
+    </div>
+  </div>
+</div>
+
 <!-- ════════ MY ROUTES SCREEN ════════ -->
 <div class="screen" id="screenRoutes">
   <div class="topbar">
@@ -342,6 +361,7 @@ const LOCAL_CANVASSERS = [
 let db;
 let teamListPromise = null;
 let currentCanvasser = null;
+let pendingCanvasserEmail = null;
 let currentRoute = null;
 let routeUnsubscribe = null;
 let pickingStopIdx = null;
@@ -412,15 +432,18 @@ async function doLogin() {
   if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
 
   try {
-    // Check local list first (instant, no network needed)
-    let canvasser = LOCAL_CANVASSERS.find(c => c.email === email);
-    // Fall back to Firestore for any canvassers added via admin panel
-    if (!canvasser) {
-      const list = await teamListPromise ||
-        await db.collection('routes').doc('_team').get({ source: 'server' })
-          .then(snap => snap.exists ? (snap.data().list || []) : []);
-      canvasser = list.find(c => c.email === email);
+    // Fetch Firestore list (for address check + canvassers not in local list)
+    let firestoreList = await teamListPromise;
+    if (!firestoreList) {
+      firestoreList = await db.collection('routes').doc('_team').get({ source: 'server' })
+        .then(snap => snap.exists ? (snap.data().list || []) : [])
+        .catch(() => null);
     }
+
+    // Auth: check local list first, then Firestore
+    let canvasser = LOCAL_CANVASSERS.find(c => c.email === email);
+    if (!canvasser && firestoreList) canvasser = firestoreList.find(c => c.email === email);
+
     if (!canvasser) {
       errEl.textContent = 'Email not found. Contact your manager.';
       errEl.style.display = 'block';
@@ -444,13 +467,51 @@ async function doLogin() {
     currentCanvasser = canvasser.name;
     sessionStorage.setItem('crCanvasser', canvasser.name);
     if (btn) { btn.disabled = false; btn.textContent = 'Enter →'; }
-    showScreen('screenRoutes');
-    loadCompletedJobsC();
-    loadMyRoutes();
+
+    // Check if address is on file — only prompt if missing
+    const firestoreRecord = firestoreList ? firestoreList.find(c => c.email === email) : null;
+    if (firestoreList && !(firestoreRecord && firestoreRecord.address)) {
+      pendingCanvasserEmail = email;
+      showScreen('screenAddress');
+    } else {
+      showScreen('screenRoutes');
+      loadCompletedJobsC();
+      loadMyRoutes();
+    }
   } catch(e) {
     errEl.textContent = 'Login failed. Check your connection and try again.';
     errEl.style.display = 'block';
     if (btn) { btn.disabled = false; btn.textContent = 'Enter →'; }
+  }
+}
+
+async function submitHomeAddress() {
+  const address = document.getElementById('homeAddressInput').value.trim();
+  const errEl   = document.getElementById('addressPromptError');
+  if (!address) {
+    errEl.textContent = 'Please enter your home address to continue.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const btn = document.getElementById('addressSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  errEl.style.display = 'none';
+  try {
+    const snap = await db.collection('routes').doc('_team').get({ source: 'server' });
+    const list = snap.exists ? (snap.data().list || []) : [];
+    const idx  = list.findIndex(c => c.email === pendingCanvasserEmail);
+    if (idx !== -1) {
+      list[idx].address = address;
+      await db.collection('routes').doc('_team').set({ list });
+    }
+    btn.disabled = false; btn.textContent = 'Save & Continue →';
+    showScreen('screenRoutes');
+    loadCompletedJobsC();
+    loadMyRoutes();
+  } catch(e) {
+    errEl.textContent = 'Failed to save. Check your connection and try again.';
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Save & Continue →';
   }
 }
 

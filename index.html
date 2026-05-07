@@ -1083,6 +1083,26 @@ function onRouteCanvasserChange() {
   map.setZoom(13);
 }
 
+function generatePassword() {
+  const upper  = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const digits = '23456789';
+  const lower  = 'abcdefghjkmnpqrstuvwxyz';
+  const rand = arr => arr[Math.floor(Math.random() * arr.length)];
+  return rand(upper) + rand(upper) + rand(digits) + rand(digits) + rand(digits) + rand(digits) + rand(lower) + rand(lower);
+}
+
+async function notifyCanvasserWebhook(name, email, password) {
+  try {
+    await fetch('https://services.leadconnectorhq.com/hooks/nPPG7BKPRH9771vRMDZ6/webhook-trigger/8b16405b-07fd-4212-b50c-512cc232c209', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password })
+    });
+  } catch(e) {
+    console.warn('Webhook notification failed:', e);
+  }
+}
+
 async function saveCanvasser(canvasser) {
   const idx = canvassersList.findIndex(c => c.email === canvasser.email);
   if (idx !== -1) canvassersList[idx] = canvasser;
@@ -1402,7 +1422,7 @@ function renderCanvassersList() {
       <div style="font-size:11px;font-weight:700;color:#5b21b6;letter-spacing:.5px;margin-bottom:10px;text-transform:uppercase;" id="canvasserFormTitle">➕ Add New Canvasser</div>
       <input id="cfName"    type="text"  placeholder="Full Name"                    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;">
       <input id="cfEmail"   type="email" placeholder="Email Address"               style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;">
-      <input id="cfPass"    type="text"  placeholder="Password"                    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;">
+      <input id="cfPass"    type="text"  placeholder="Password"                    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;" value="${generatePassword()}">
       <input id="cfAddress" type="text"  placeholder="Home Address (optional)"     style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:10px;display:block;" title="Used for the home pin on the map">
       <input id="cfEditEmail" type="hidden" value="">
       <div style="display:flex;gap:8px;">
@@ -1431,7 +1451,7 @@ function openEditCanvasser(email) {
 function resetCanvasserForm() {
   document.getElementById('cfName').value    = '';
   document.getElementById('cfEmail').value   = '';
-  document.getElementById('cfPass').value    = '';
+  document.getElementById('cfPass').value    = generatePassword();
   document.getElementById('cfAddress').value = '';
   document.getElementById('cfEditEmail').value = '';
   document.getElementById('cfEmail').disabled = false;
@@ -1461,6 +1481,7 @@ async function submitCanvasserForm() {
   errEl.style.display = 'none';
   try {
     await saveCanvasser({ name, email, password, address });
+    if (!editEmail) notifyCanvasserWebhook(name, email, password); // new canvasser only
     resetCanvasserForm();
   } catch(e) {
     errEl.textContent = 'Save failed. Check your connection.'; errEl.style.display = 'block';
