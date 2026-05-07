@@ -2420,11 +2420,12 @@ async function syncToFirestore(routes) {
     return;
   }
 
-  // SAFETY GUARD: never delete everything — if routes is empty and cloud has data, abort
+  // SAFETY GUARD: never delete everything — if routes is empty and cloud has actual route data, abort
   if (routes.length === 0) {
     try {
-      const check = await db.collection('routes').limit(1).get();
-      if (!check.empty) {
+      const check = await db.collection('routes').get();
+      const hasRealRoutes = check.docs.some(d => !d.id.startsWith('_'));
+      if (hasRealRoutes) {
         console.warn('Refusing to delete all cloud routes — local cache is empty but Firestore has data.');
         showSync('⚠ Safety: not overwriting cloud data');
         setTimeout(hideSync, 3000);
@@ -2438,8 +2439,8 @@ async function syncToFirestore(routes) {
     const newIds = new Set(routes.map(r => String(r.id)));
     const snap = await db.collection('routes').get();
     const batch = db.batch();
-    // Only delete docs that we intentionally removed (not missing due to load failure)
-    snap.docs.forEach(doc => { if (!newIds.has(doc.id)) batch.delete(doc.ref); });
+    // Only delete docs that we intentionally removed — never touch reserved _team/_schedule docs
+    snap.docs.forEach(doc => { if (!newIds.has(doc.id) && !doc.id.startsWith('_')) batch.delete(doc.ref); });
     routes.forEach(r => {
       const ref = db.collection('routes').doc(String(r.id));
       batch.set(ref, r);
