@@ -533,7 +533,8 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
   <button class="mob-menu-item" onclick="openModal();closeMobileMenu()">🖨 Print Route</button>
   <button class="mob-menu-item" onclick="openReport();closeMobileMenu()">📊 Report</button>
   <button class="mob-menu-item" onclick="openScheduleAdmin();closeMobileMenu()">📅 Schedule</button>
-  <button class="mob-menu-item" onclick="exportCSV();closeMobileMenu()">⬇ Export CSV</button>
+  <button class="mob-menu-item" onclick="exportCSV();closeMobileMenu()">⬇ Export CSV (current route)</button>
+  <button class="mob-menu-item" onclick="exportAllVisits();closeMobileMenu()">⬇ Export All Visits</button>
   <button class="mob-menu-item" onclick="forceReloadFromCloud();closeMobileMenu()">☁ Reload from Cloud</button>
   <button class="mob-menu-item danger" onclick="clearAll();closeMobileMenu()">✕ Clear All Stops</button>
   <button class="mob-menu-item danger" onclick="adminLogout()">🚪 Sign Out</button>
@@ -682,6 +683,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
       </div>
       <button class="btn bh" style="color:var(--ink);border-color:var(--rule);align-self:flex-end;" onclick="clearRptFilters()">↺ Reset</button>
       <button class="btn bg" style="align-self:flex-end;" onclick="exportReportCSV()">⬇ Export CSV</button>
+      <button class="btn bh" style="background:#e0f2fe;border-color:#0284c7;color:#075985;align-self:flex-end;" onclick="exportAllVisits()">⬇ All Visits</button>
       <button class="btn bh" style="background:#fef9c3;border-color:#ca8a04;color:#854d0e;align-self:flex-end;" onclick="quickFilterStatus('Not Home')">🏠 Not Home</button>
       <button class="btn bh" style="background:#fce7f3;border-color:#be185d;color:#9d174d;align-self:flex-end;" onclick="quickFilterStatus('No Soliciting')">🚫 No Soliciting</button>
       <button id="btnSendSheets" class="btn bh" style="background:#e8f5e9;border-color:#388e3c;color:#1b5e20;align-self:flex-end;display:none;" onclick="sendToGoogleSheets()">📤 Send to Google Sheets</button>
@@ -778,6 +780,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
     <div class="mb" id="mbJobs" style="padding:0;"></div>
     <div class="mf">
       <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="closeJobsModal()">Close</button>
+      <button class="btn bh" style="background:#e0f2fe;border-color:#0284c7;color:#075985;" onclick="exportJobsCSV()">⬇ Export CSV</button>
     </div>
   </div>
 </div>
@@ -1421,6 +1424,7 @@ function renderCanvassersList() {
           <div style="flex:1;min-width:0;">
             <div style="font-weight:700;font-size:13px;color:#1a2744;">${x(c.name)}</div>
             <div style="font-size:11px;color:#6b7280;margin-top:1px;">${x(c.email)}</div>
+            ${c.phone   ? `<div style="font-size:11px;color:#2563eb;margin-top:1px;">📞 ${x(c.phone)}</div>`   : ''}
             ${c.address ? `<div style="font-size:11px;color:#15803d;margin-top:1px;">🏠 ${x(c.address)}</div>` : ''}
           </div>
           <button onclick="openEditCanvasser('${x(c.email)}')" style="font-size:11px;padding:4px 10px;border:1px solid #d1d5db;border-radius:5px;background:#f9fafb;color:#374151;cursor:pointer;">✏️ Edit</button>
@@ -1432,6 +1436,7 @@ function renderCanvassersList() {
       <input id="cfName"    type="text"  placeholder="Full Name"                    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;">
       <input id="cfEmail"   type="email" placeholder="Email Address"               style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;">
       <input id="cfPass"    type="text"  placeholder="Password"                    style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;" value="${generatePassword()}">
+      <input id="cfPhone"   type="tel"   placeholder="Phone Number (optional)"     style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:8px;display:block;">
       <input id="cfAddress" type="text"  placeholder="Home Address (optional)"     style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:10px;display:block;" title="Used for the home pin on the map">
       <input id="cfEditEmail" type="hidden" value="">
       <div style="display:flex;gap:8px;">
@@ -1448,6 +1453,7 @@ function openEditCanvasser(email) {
   document.getElementById('cfName').value    = c.name;
   document.getElementById('cfEmail').value   = c.email;
   document.getElementById('cfPass').value    = c.password;
+  document.getElementById('cfPhone').value   = c.phone   || '';
   document.getElementById('cfAddress').value = c.address || '';
   document.getElementById('cfEditEmail').value = c.email;
   document.getElementById('cfEmail').disabled = true; // email is the key, can't change
@@ -1461,6 +1467,7 @@ function resetCanvasserForm() {
   document.getElementById('cfName').value    = '';
   document.getElementById('cfEmail').value   = '';
   document.getElementById('cfPass').value    = generatePassword();
+  document.getElementById('cfPhone').value   = '';
   document.getElementById('cfAddress').value = '';
   document.getElementById('cfEditEmail').value = '';
   document.getElementById('cfEmail').disabled = false;
@@ -1473,6 +1480,7 @@ async function submitCanvasserForm() {
   const name     = document.getElementById('cfName').value.trim();
   const email    = document.getElementById('cfEmail').value.trim().toLowerCase();
   const password = document.getElementById('cfPass').value.trim();
+  const phone    = document.getElementById('cfPhone').value.trim();
   const address  = document.getElementById('cfAddress').value.trim();
   const editEmail= document.getElementById('cfEditEmail').value;
   const errEl    = document.getElementById('cfError');
@@ -1489,7 +1497,7 @@ async function submitCanvasserForm() {
   }
   errEl.style.display = 'none';
   try {
-    await saveCanvasser({ name, email, password, address });
+    await saveCanvasser({ name, email, password, phone, address });
     if (!editEmail) notifyCanvasserWebhook(name, email, password); // new canvasser only
     resetCanvasserForm();
   } catch(e) {
@@ -1770,6 +1778,21 @@ function openJobsModal() {
 
 function closeJobsModal() {
   document.getElementById('ovJobs').classList.remove('on');
+}
+
+function exportJobsCSV() {
+  if (!completedJobs.length) { alert('No completed jobs to export.'); return; }
+  const sorted = [...completedJobs].sort((a, b) => b.id - a.id);
+  const rows = [['Description', 'Address', 'Latitude', 'Longitude']];
+  sorted.forEach(j => {
+    rows.push([j.description || '', j.address || '', j.lat ?? '', j.lng ?? '']);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
+  a.download = `completed-jobs-${dateStr}.csv`;
+  a.click();
 }
 
 function focusJobOnMap(id) {
@@ -3774,6 +3797,53 @@ function exportReportCSV() {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   a.download = 'canvassing-report.csv'; a.click();
+}
+
+function exportAllVisits() {
+  const allRoutes = getSavedRoutes();
+  const rows = [['Address', 'Street', 'City', 'Canvasser', 'Response', 'Visited At', 'Note', 'Route Name']];
+  const allStops = [];
+  allRoutes.forEach(r => {
+    (r.stops || []).forEach(s => {
+      if (!s.status) return; // only visited/accounted-for stops
+      allStops.push({
+        fullAddress: s.fullAddress || [s.street, s.city].filter(Boolean).join(', '),
+        street: s.street || '',
+        city: s.city || '',
+        canvasser: r.canvasser || 'Unassigned',
+        status: s.status,
+        statusAt: s.statusAt || '',
+        note: s.note || '',
+        routeName: r.name || ''
+      });
+    });
+  });
+  // Sort by visit time, newest first; unvisited at bottom
+  allStops.sort((a, b) => {
+    if (a.statusAt && b.statusAt) return new Date(b.statusAt) - new Date(a.statusAt);
+    if (a.statusAt) return -1;
+    if (b.statusAt) return 1;
+    return 0;
+  });
+  allStops.forEach(s => {
+    rows.push([
+      s.fullAddress,
+      s.street,
+      s.city,
+      s.canvasser,
+      s.status,
+      s.statusAt ? formatStatusTime(s.statusAt) : '',
+      s.note,
+      s.routeName
+    ]);
+  });
+  if (allStops.length === 0) { alert('No visited stops found across any saved routes.'); return; }
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
+  a.download = `all-visits-${dateStr}.csv`;
+  a.click();
 }
 
 // ── SPLIT ROUTE ──────────────────────────────────
