@@ -4544,6 +4544,24 @@ function confirmSplit() {
   route.stops = completedStops;
   route.stopCount = completedStops.length;
 
+  // Record the END time as the canvasser's LAST response so reports can compute
+  // duration and avg time per lead (handles canvassers who forgot to End Route).
+  const respDates = completedStops
+    .filter(s => s.statusAt)
+    .map(s => new Date(s.statusAt))
+    .filter(d => !isNaN(d));
+  if (respDates.length) {
+    const toHM = d => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const lastResp = new Date(Math.max(...respDates.map(d => d.getTime())));
+    route.endTime = toHM(lastResp);
+    if (!route.startTime) route.startTime = toHM(new Date(Math.min(...respDates.map(d => d.getTime()))));
+    // Close out the original route at that last-response time
+    route.completed = true;
+    if (route.clockIn && !route.clockOut) {
+      route.clockOut = { time: lastResp.toISOString(), lat: null, lng: null };
+    }
+  }
+
   // Create new route with remaining stops (statuses cleared — fresh start)
   const newRoute = {
     id: Date.now(),
@@ -4569,7 +4587,7 @@ function confirmSplit() {
 
   alert(`✅ Done!
 
-"${route.name}" now has ${completedStops.length} completed stops.
+"${route.name}" now has ${completedStops.length} completed stops${route.endTime ? ` (ended ${route.endTime} — last response)` : ''}.
 "${newName}" has ${remainingStops.length} stops ready for the next session.`);
 }
 

@@ -636,6 +636,7 @@ async function submitHomeAddress() {
 
 function logout() {
   if (routeUnsubscribe) { routeUnsubscribe(); routeUnsubscribe = null; }
+  stopIdleWatch();
   currentCanvasser = null;
   currentRoute = null;
   sessionStorage.removeItem('crCanvasser');
@@ -653,9 +654,18 @@ async function loadMyRoutes() {
   listEl.innerHTML = '<div class="empty-msg">Loading your routes…</div>';
   try {
     const snap = await db.collection('routes').orderBy('id', 'desc').get();
-    // Hide routes the canvasser has finished (completed at clock-out) so only new/in-progress show
-    const myRoutes = snap.docs.map(d => d.data()).filter(r => r.canvasser === currentCanvasser && !r.completed);
-    renderRoutesList(myRoutes);
+    let mine = snap.docs.map(d => d.data()).filter(r => r.canvasser === currentCanvasser);
+
+    // Auto-end any routes left open by mistake (no response for >10 min) at their last-response time
+    const stale = mine.filter(isStaleOpenRoute);
+    if (stale.length) {
+      for (const r of stale) await autoEndRoute(r, false);
+      const snap2 = await db.collection('routes').orderBy('id', 'desc').get();
+      mine = snap2.docs.map(d => d.data()).filter(r => r.canvasser === currentCanvasser);
+    }
+
+    // Hide finished routes so only new / in-progress ones show
+    renderRoutesList(mine.filter(r => !r.completed));
   } catch(e) {
     console.error(e);
     listEl.innerHTML = '<div class="empty-msg" style="color:#ef4444;">⚠️ Failed to load routes.<br>Check your connection and try again.</div>';
@@ -823,10 +833,12 @@ function openRoute(routeId) {
   }, err => {
     console.error('Route snapshot error:', err);
   });
+  startIdleWatch();
 }
 
 function backToRoutes() {
   if (routeUnsubscribe) { routeUnsubscribe(); routeUnsubscribe = null; }
+  stopIdleWatch();
   currentRoute = null;
   showScreen('screenRoutes');
   loadMyRoutes();
@@ -928,12 +940,12 @@ function renderClockBar() {
   const onBreak = isOnBreak();
 
   if (co) {
-    // Shift complete
+    // Route ended
     const breakCount = breaks.length;
     bar.innerHTML = `
       <div style="background:#f1f5f9;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:10px 14px;">
-        <div style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.5px;margin-bottom:3px;">SHIFT COMPLETE</div>
-        <div style="font-size:12px;color:#475569;">🟢 In: ${formatClockTime(ci.time)} ${clockLocationLink(ci.lat, ci.lng)} &nbsp;·&nbsp; 🔴 Out: ${formatClockTime(co.time)} ${clockLocationLink(co.lat, co.lng)}</div>
+        <div style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.5px;margin-bottom:3px;">ROUTE ENDED</div>
+        <div style="font-size:12px;color:#475569;">🟢 Started: ${formatClockTime(ci.time)} ${clockLocationLink(ci.lat, ci.lng)} &nbsp;·&nbsp; 🏁 Ended: ${formatClockTime(co.time)} ${clockLocationLink(co.lat, co.lng)}</div>
         ${breakCount ? `<div style="font-size:11px;color:#92400e;margin-top:2px;">☕ ${breakCount} break${breakCount > 1 ? 's' : ''} taken</div>` : ''}
       </div>`;
 
@@ -945,7 +957,7 @@ function renderClockBar() {
         <div style="font-size:12px;color:#92400e;margin-top:2px;">Since ${formatClockTime(lastBreak.startTime)} ${clockLocationLink(lastBreak.startLat, lastBreak.startLng)}</div>
         <div style="display:flex;gap:8px;margin-top:8px;">
           <button onclick="doEndBreak()" style="flex:1;background:#15803d;color:#fff;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;">▶ End Break</button>
-          <button onclick="doClockOut()" style="flex:1;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;">🔴 Clock Out</button>
+          <button onclick="doClockOut()" style="flex:1;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;">🏁 End Route</button>
         </div>
         <div style="font-size:11px;color:#92400e;text-align:center;margin-top:6px;">You cannot mark houses while on break.</div>
       </div>`;
@@ -958,7 +970,7 @@ function renderClockBar() {
         <div style="font-size:12px;color:#047857;margin-top:2px;">Since ${formatClockTime(ci.time)} ${clockLocationLink(ci.lat, ci.lng)}</div>
         <div style="display:flex;gap:8px;margin-top:8px;">
           <button onclick="doStartBreak()" style="flex:1;background:#d97706;color:#fff;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;">☕ Take a Break</button>
-          <button onclick="doClockOut()" style="flex:1;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;">🔴 Clock Out</button>
+          <button onclick="doClockOut()" style="flex:1;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;">🏁 End Route</button>
         </div>
       </div>`;
 
@@ -1029,68 +1041,139 @@ async function doEndBreak() {
   }
 }
 
+// Time + location of the last response (status) entered on a route
+function lastResponseInfo(route) {
+  let best = null;
+  (route.stops || []).forEach(s => {
+    if (s.status && s.statusAt) {
+      const t = new Date(s.statusAt).getTime();
+      if (!isNaN(t) && (!best || t > best.ms)) {
+        best = { ms: t, iso: s.statusAt, lat: s.lat || null, lng: s.lng || null };
+      }
+    }
+  });
+  return best; // null if no responses yet
+}
+
+// Shared end-route logic: closes the route at `endISO`, splits unvisited stops
+// into a continuation route. Used by manual End Route and auto-end.
+async function endRouteCore(route, endISO, endLat, endLng) {
+  const breaks = JSON.parse(JSON.stringify(route.breaks || []));
+  const lastB = breaks[breaks.length - 1];
+  if (lastB && lastB.startTime && !lastB.endTime) {
+    lastB.endTime = endISO; lastB.endLat = endLat; lastB.endLng = endLng;
+  }
+  const stops = route.stops || [];
+  const unvisited = stops.filter(s => !s.status);
+
+  const update = { clockOut: { time: endISO, lat: endLat, lng: endLng }, completed: true, endTime: endISO };
+  if (breaks.length) update.breaks = breaks;
+  await db.collection('routes').doc(String(route.id)).update(update);
+
+  let contName = null;
+  if (unvisited.length > 0) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateStr = tomorrow.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+    const newId = Date.now() + Math.floor(Math.random() * 1000);
+    const contRoute = {
+      id: newId,
+      name: `Continuation from ${route.name}`,
+      canvasser: route.canvasser,
+      date: dateStr,
+      stops: unvisited,
+      stopCount: unvisited.length,
+      completed: false,
+      continuationFrom: route.id,
+      continuationFromName: route.name,
+      startTime: '',
+      endTime: ''
+    };
+    await db.collection('routes').doc(String(newId)).set(contRoute);
+    contName = contRoute.name;
+  }
+  return { unvisited: unvisited.length, contName };
+}
+
 async function doClockOut() {
   if (!currentRoute || !currentRoute.clockIn || currentRoute.clockOut) return;
-  if (!confirm('Clock out and end your shift?')) return;
+  if (!confirm('End this route? Your end time will be set to your last response.')) return;
   disableClockBtns();
 
   const loc = await getLocation();
-  const clockOut = { time: new Date().toISOString(), lat: loc ? loc.lat : null, lng: loc ? loc.lng : null };
-
-  // If currently on break, close that break at the same time as clock out
-  const breaks = JSON.parse(JSON.stringify(currentRoute.breaks || []));
-  if (isOnBreak()) {
-    const last = breaks[breaks.length - 1];
-    if (last && !last.endTime) {
-      last.endTime = clockOut.time;
-      last.endLat = clockOut.lat;
-      last.endLng = clockOut.lng;
-    }
-  }
-
-  const stops = currentRoute.stops || [];
-  const unvisited = stops.filter(s => !s.status);
+  // End time = time of the LAST response (trailing idle time doesn't count toward stats)
+  const last = lastResponseInfo(currentRoute);
+  const endISO = last ? last.iso : new Date().toISOString();
+  const endLat = loc ? loc.lat : (last ? last.lat : null);
+  const endLng = loc ? loc.lng : (last ? last.lng : null);
 
   try {
-    const update = { clockOut, completed: true };
-    if (breaks.length) update.breaks = breaks;
-    await db.collection('routes').doc(String(currentRoute.id)).update(update);
-
-    if (unvisited.length > 0) {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const dateStr = tomorrow.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
-      const newId = Date.now();
-      const contRoute = {
-        id: newId,
-        name: `Continuation from ${currentRoute.name}`,
-        canvasser: currentRoute.canvasser,
-        date: dateStr,
-        stops: unvisited,
-        stopCount: unvisited.length,
-        completed: false,
-        continuationFrom: currentRoute.id,
-        continuationFromName: currentRoute.name,
-        startTime: '',
-        endTime: ''
-      };
-      await db.collection('routes').doc(String(newId)).set(contRoute);
-      alert(`✅ Clocked out!\n\n${unvisited.length} remaining stop${unvisited.length !== 1 ? 's' : ''} saved as:\n"Continuation from ${currentRoute.name}"\nscheduled for ${dateStr}.`);
+    const res = await endRouteCore(currentRoute, endISO, endLat, endLng);
+    if (res.unvisited > 0) {
+      alert(`🏁 Route ended at ${formatClockTime(endISO)}.\n\n${res.unvisited} remaining stop${res.unvisited !== 1 ? 's' : ''} saved as:\n"${res.contName}".`);
     } else {
-      alert('✅ Clocked out! All stops completed. Great work!');
+      alert(`🏁 Route ended at ${formatClockTime(endISO)}. All stops completed — great work!`);
     }
   } catch(e) {
-    alert('Failed to clock out. Check your connection and try again.');
+    alert('Failed to end route. Check your connection and try again.');
     renderClockBar();
   }
 }
+
+// ── AUTO-END STALE ROUTES (forgot to End Route) ───
+const IDLE_LIMIT_MS = 10 * 60 * 1000; // 10 minutes with no new responses
+let idleTimer = null;
+
+// A route is stale if clocked in, not ended, and last response was >10 min ago
+function isStaleOpenRoute(r) {
+  if (!r || !r.clockIn || r.clockOut || r.completed) return false;
+  const l = lastResponseInfo(r);
+  return !!(l && Date.now() - l.ms > IDLE_LIMIT_MS);
+}
+
+// End a route automatically at its last-response time
+async function autoEndRoute(route, notify) {
+  const last = lastResponseInfo(route);
+  if (!last) return false; // no responses → nothing to base an end time on
+  try {
+    const res = await endRouteCore(route, last.iso, last.lat, last.lng);
+    if (notify) {
+      alert(`⏱️ Route auto-ended\n\n"${route.name}" was ended at your last response (${formatClockTime(last.iso)}) after 10 minutes with no new responses.${res.unvisited > 0 ? `\n\n${res.unvisited} remaining stop${res.unvisited !== 1 ? 's' : ''} saved as "${res.contName}".` : ''}`);
+    }
+    return true;
+  } catch(e) {
+    console.warn('autoEndRoute failed:', e);
+    return false;
+  }
+}
+
+function startIdleWatch() {
+  stopIdleWatch();
+  idleTimer = setInterval(checkCurrentRouteIdle, 60 * 1000);
+}
+function stopIdleWatch() {
+  if (idleTimer) { clearInterval(idleTimer); idleTimer = null; }
+}
+async function checkCurrentRouteIdle() {
+  if (!currentRoute || !currentRoute.clockIn || currentRoute.clockOut || currentRoute.completed) return;
+  if (isOnBreak()) return; // breaks are intentional pauses
+  // Don't end while they're actively entering a status
+  if (document.getElementById('statusSheet').classList.contains('on')) return;
+  const last = lastResponseInfo(currentRoute);
+  if (!last || Date.now() - last.ms <= IDLE_LIMIT_MS) return;
+  stopIdleWatch();
+  const ended = await autoEndRoute(currentRoute, true);
+  if (ended) backToRoutes();
+}
+
+// ── STOP TAP (list view) ──────────────────────────
 
 // ── STOP TAP (list view) ──────────────────────────
 function tappedStop(idx) {
   if (!currentRoute) return;
   if (!currentRoute.clockIn) { alert('Please clock in before marking any houses.'); return; }
   if (isOnBreak()) { alert('You are on break. End your break before marking a house.'); return; }
-  if (currentRoute.clockOut) { alert('You have already clocked out.'); return; }
+  if (currentRoute.clockOut) { alert('This route has already been ended.'); return; }
   db.collection('routes').doc(String(currentRoute.id))
     .update({ liveStopIdx: idx, liveUpdatedAt: new Date().toISOString() })
     .catch(e => console.warn('liveStopIdx update failed:', e));
@@ -1120,7 +1203,7 @@ function selectMapStop(i) {
 function openMapStatusPicker() {
   if (!currentRoute.clockIn) { alert('Please clock in before marking any houses.'); return; }
   if (isOnBreak()) { alert('You are on break. End your break before marking a house.'); return; }
-  if (currentRoute.clockOut) { alert('You have already clocked out.'); return; }
+  if (currentRoute.clockOut) { alert('This route has already been ended.'); return; }
   if (mapSelectedIdx !== null) openStatusPicker(mapSelectedIdx);
 }
 
