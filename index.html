@@ -2903,9 +2903,10 @@ function buildGridInsidePolygon(poly) {
   return []; // fallback (shouldn't happen)
 }
 
-// Build probe points for an OPEN line trace: centerline + both sides set back
+// Build probe points for an OPEN line trace: centerline + both sides, several
+// set-back distances, so houses fronting either side of the line are all caught.
 function buildPerpendicularProbes(samples) {
-  const OFFSETS = [15, 30];
+  const OFFSETS = [12, 24, 36];
   const pts = [];
   for (let i = 0; i < samples.length; i++) {
     const here = samples[i];
@@ -2923,16 +2924,22 @@ function buildPerpendicularProbes(samples) {
 
 async function processTracePath() {
   // Dense samples along the drawn path — used to ORDER houses (follow the line)
-  const samples = interpolatePolyline(tracePath, 12);
+  const samples = interpolatePolyline(tracePath, 10);
   const cumDist = [0];
   for (let i = 1; i < samples.length; i++) {
     cumDist[i] = cumDist[i - 1] + haversineMeters(samples[i-1].lat(), samples[i-1].lng(), samples[i].lat(), samples[i].lng());
   }
+  const pathLen = cumDist[cumDist.length - 1];
 
-  // Closed loop (encloses real area) → fill the interior so we get EVERY house.
-  // Open line → probe along the line and both sides.
+  // A true LOOP returns to near its start (e.g. circling one block) → fill the
+  // interior. A serpentine/snake ends far from its start → treat as an open
+  // line and probe along it + both sides. Endpoint gap is the deciding signal.
   const area = polygonAreaM2(tracePath);
-  const isLoop = tracePath.length >= 3 && area > 400;
+  const endGap = haversineMeters(
+    tracePath[0].lat(), tracePath[0].lng(),
+    tracePath[tracePath.length - 1].lat(), tracePath[tracePath.length - 1].lng()
+  );
+  const isLoop = tracePath.length >= 3 && area > 800 && endGap < Math.max(45, pathLen * 0.12);
   const probePoints = isLoop ? buildGridInsidePolygon(tracePath) : buildPerpendicularProbes(samples);
 
   traceFoundAddresses = new Map();
