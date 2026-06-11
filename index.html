@@ -483,6 +483,20 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
         </select>
       </div>
       <div class="hint">🖱 <b>Click the map</b> to add stops. <b>Drag any pin</b> to move it — address updates automatically.</div>
+      <div id="routeStats" style="display:none;padding:10px;border-bottom:1px solid var(--rule);background:#fff;gap:8px;">
+        <div style="flex:1;background:#f3f2f7;border-radius:10px;padding:10px 8px;text-align:center;">
+          <div style="font-size:22px;font-weight:900;color:#1a2744;line-height:1;" id="rsHouses">0</div>
+          <div style="font-size:9px;font-weight:700;color:#9ca3af;letter-spacing:.6px;margin-top:5px;">HOUSES</div>
+        </div>
+        <div style="flex:1;background:#f3f2f7;border-radius:10px;padding:10px 8px;text-align:center;">
+          <div style="font-size:22px;font-weight:900;color:#1a2744;line-height:1;"><span id="rsMiles">0.0</span><span style="font-size:11px;font-weight:700;color:#9ca3af;">mi</span></div>
+          <div style="font-size:9px;font-weight:700;color:#9ca3af;letter-spacing:.6px;margin-top:5px;">ROUTE</div>
+        </div>
+        <div style="flex:1;background:#f3f2f7;border-radius:10px;padding:10px 8px;text-align:center;">
+          <div style="font-size:22px;font-weight:900;color:#1a2744;line-height:1;" id="rsTime">0m</div>
+          <div style="font-size:9px;font-weight:700;color:#9ca3af;letter-spacing:.6px;margin-top:5px;">EST. TIME</div>
+        </div>
+      </div>
       <div id="list"><div class="emp">🗺️<br><br>Search for a neighborhood above,<br>then click the map to add stops.</div></div>
       <div class="sbf">
         <div id="sbfNormal" style="display:flex;gap:5px;flex:1 1 100%;flex-wrap:wrap;">
@@ -2395,10 +2409,42 @@ function reverseGeocode(latLng, id) {
 }
 
 // ── SIDEBAR ───────────────────────────────────────
+const SECS_PER_HOUSE = 88; // 1 min 28 sec per house
+
+function updateRouteStats() {
+  const box = document.getElementById('routeStats');
+  if (!box) return;
+  if (stops.length < 1) { box.style.display = 'none'; return; }
+  box.style.display = 'flex';
+
+  // Total walking distance between consecutive stops (meters → miles)
+  let meters = 0;
+  for (let i = 0; i < stops.length - 1; i++) {
+    const a = stops[i].pos, b = stops[i + 1].pos;
+    if (a && b) meters += haversineMeters(a.lat(), a.lng(), b.lat(), b.lng());
+  }
+  const miles = meters / 1609.344;
+
+  // Estimated time: 88 sec per house (includes walking + knocking time)
+  const totalSecs = stops.length * SECS_PER_HOUSE;
+
+  document.getElementById('rsHouses').textContent = stops.length;
+  document.getElementById('rsMiles').textContent = miles < 0.1 ? miles.toFixed(2) : miles.toFixed(1);
+  document.getElementById('rsTime').textContent = formatDuration(totalSecs);
+}
+
+function formatDuration(secs) {
+  const h = Math.floor(secs / 3600);
+  const m = Math.round((secs % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
 function renderList() {
   document.getElementById('cnt').textContent = stops.length;
   const mCnt = document.getElementById('mCnt');
   if (mCnt) mCnt.textContent = stops.length;
+  updateRouteStats();
   const l = document.getElementById('list');
   if (!stops.length) { l.innerHTML = '<div class="emp">🗺️<br><br>No stops yet.<br>Click the map to begin.</div>'; return; }
   l.innerHTML = stops.map((s, i) => {
