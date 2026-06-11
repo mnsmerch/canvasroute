@@ -1602,7 +1602,7 @@ function doInitMap() {
 
   map.addListener('click', e => {
     if (traceMode) {
-      if (freehandWasDragging) { freehandWasDragging = false; return; } // suppress click after drag
+      if (freehandWasDragging) { freehandWasDragging = false; return; }
       addTracePoint(e.latLng);
       return;
     }
@@ -1611,42 +1611,51 @@ function doInitMap() {
   map.addListener('dblclick', e => {
     if (traceMode) { e.stop(); finishTrace(); }
   });
-  // Freehand: hold mouse and drag to draw curves
-  map.addListener('mousedown', e => {
+
+  // Freehand drawing — use native DOM events so we intercept before Google Maps
+  // can capture the drag for panning.
+  const mapEl = document.getElementById('map');
+  mapEl.addEventListener('mousedown', e => {
     if (!traceMode) return;
     freehandMouseDown = true;
     freehandActive = false;
+    freehandStartX = e.clientX;
+    freehandStartY = e.clientY;
+    // Block Google Maps from starting a pan gesture immediately
+    map.setOptions({ draggable: false });
   });
-  map.addListener('mousemove', e => {
+  mapEl.addEventListener('mousemove', e => {
     if (!traceMode || !freehandMouseDown) return;
+    // Wait for at least 6 px of movement before entering freehand mode
+    // (avoids triggering on tiny wobbles during a regular click)
     if (!freehandActive) {
+      const dx = e.clientX - freehandStartX, dy = e.clientY - freehandStartY;
+      if (dx * dx + dy * dy < 36) return;
       freehandActive = true;
       freehandWasDragging = true;
-      map.setOptions({ draggable: false }); // prevent map panning while drawing
-      if (!tracePath.length) addFreehandPoint(e.latLng); // seed first point
     }
+    const latLng = domXYtoLatLng(e.clientX, e.clientY);
+    if (!latLng) return;
+    if (!tracePath.length) { addFreehandPoint(latLng); return; }
     const last = tracePath[tracePath.length - 1];
-    if (last && haversineMeters(last.lat(), last.lng(), e.latLng.lat(), e.latLng.lng()) >= 8) {
-      addFreehandPoint(e.latLng);
+    if (haversineMeters(last.lat(), last.lng(), latLng.lat(), latLng.lng()) >= 8) {
+      addFreehandPoint(latLng);
     }
   });
-  map.addListener('mouseup', e => {
-    if (!traceMode) return;
+  // Window-level mouseup catches releases both inside and outside the map
+  window.addEventListener('mouseup', e => {
+    if (!traceMode || !freehandMouseDown) return;
     if (freehandActive) {
-      const last = tracePath[tracePath.length - 1];
-      if (last && haversineMeters(last.lat(), last.lng(), e.latLng.lat(), e.latLng.lng()) > 1) {
-        addFreehandPoint(e.latLng);
+      const latLng = domXYtoLatLng(e.clientX, e.clientY);
+      if (latLng) {
+        const last = tracePath[tracePath.length - 1];
+        if (last && haversineMeters(last.lat(), last.lng(), latLng.lat(), latLng.lng()) > 1) {
+          addFreehandPoint(latLng);
+        }
       }
-      map.setOptions({ draggable: true });
       freehandActive = false;
     }
-    freehandMouseDown = false;
-  });
-  // Safety net: if mouse is released outside the map, end freehand cleanly
-  window.addEventListener('mouseup', () => {
-    if (!traceMode || !freehandActive) return;
     map.setOptions({ draggable: true });
-    freehandActive = false;
     freehandMouseDown = false;
   });
 
@@ -2511,6 +2520,8 @@ let traceChecked = new Set();
 let freehandMouseDown = false;
 let freehandActive = false;
 let freehandWasDragging = false;
+let freehandStartX = 0;
+let freehandStartY = 0;
 
 function startTrace() {
   traceMode = true;
@@ -2574,6 +2585,24 @@ function addTracePoint(latLng) {
     icon: { path: google.maps.SymbolPath.CIRCLE, scale: 5, fillColor: '#0891b2', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
     clickable: false, zIndex: 900
   }));
+}
+
+// Convert browser pixel coords to LatLng using the map's current bounds.
+// Linear interpolation is accurate to within a meter at street-level zoom.
+function domXYtoLatLng(clientX, clientY) {
+  const el = document.getElementById('map');
+  const rect = el.getBoundingClientRect();
+  const bounds = map.getBounds();
+  if (!bounds) return null;
+  const ne = bounds.getNorthEast(), sw = bounds.getSouthWest();
+  const xRatio = (clientX - rect.left) / rect.width;
+  const yRatio = (clientY - rect.top)  / rect.height;
+  let lngSpan = ne.lng() - sw.lng();
+  if (lngSpan < 0) lngSpan += 360;
+  return new google.maps.LatLng(
+    ne.lat() - yRatio * (ne.lat() - sw.lat()),
+    sw.lng() + xRatio * lngSpan
+  );
 }
 
 // Freehand version: updates polyline only, no dot marker (avoids hundreds of markers)
