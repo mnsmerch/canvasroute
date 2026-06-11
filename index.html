@@ -2554,56 +2554,38 @@ function interpolatePolyline(path, stepMeters) {
   return result;
 }
 
-// Sort found addresses in the order they appear along the traced path
-function sortByPathOrder(addresses, path) {
-  if (!path || path.length < 2) return;
-  addresses.forEach(addr => {
-    let best = Infinity, bestDist = 0, cumDist = 0;
-    for (let i = 0; i < path.length - 1; i++) {
-      const d = haversineMeters(addr.lat, addr.lng, path[i].lat(), path[i].lng());
-      if (d < best) { best = d; bestDist = cumDist; }
-      cumDist += haversineMeters(path[i].lat(), path[i].lng(), path[i+1].lat(), path[i+1].lng());
-    }
-    const dLast = haversineMeters(addr.lat, addr.lng, path[path.length-1].lat(), path[path.length-1].lng());
-    if (dLast < best) bestDist = cumDist;
-    addr._pathDist = bestDist;
-  });
-  addresses.sort((a, b) => a._pathDist - b._pathDist);
-}
-
 async function processTracePath() {
-  const STEP = 12; // meters between samples — ~1 per house lot
+  const STEP = 12; // meters between samples
   const samples = interpolatePolyline(tracePath, STEP);
   traceFoundAddresses = new Map();
 
   const scanModal = document.getElementById('ovTraceScan');
-  const scanBar = document.getElementById('traceScanBar');
+  const scanBar   = document.getElementById('traceScanBar');
   const scanDetail = document.getElementById('traceScanDetail');
   document.getElementById('traceScanMsg').textContent = `Scanning ${samples.length} points along your path…`;
   scanBar.style.width = '0%';
   scanDetail.textContent = '';
   scanModal.classList.add('on');
 
-  const BATCH = 5;
-  for (let i = 0; i < samples.length; i += BATCH) {
-    await Promise.all(samples.slice(i, i + BATCH).map(pt => reverseGeocodeTrace(pt)));
-    const pct = Math.min(Math.round((i + BATCH) / samples.length * 100), 100);
+  // Process ONE at a time so addresses are stored in strict path order.
+  // The first sample to discover an address sets its position in the Map —
+  // since Map preserves insertion order, no sorting needed afterward.
+  for (let i = 0; i < samples.length; i++) {
+    await reverseGeocodeTrace(samples[i]);
+    const pct = Math.round((i + 1) / samples.length * 100);
     scanBar.style.width = pct + '%';
-    scanDetail.textContent = `${Math.min(i + BATCH, samples.length)} of ${samples.length} points · ${traceFoundAddresses.size} addresses found`;
-    if (i + BATCH < samples.length) await new Promise(r => setTimeout(r, 120));
+    scanDetail.textContent = `${i + 1} of ${samples.length} points · ${traceFoundAddresses.size} addresses found`;
   }
 
   scanModal.classList.remove('on');
-  const savedPath = tracePath.slice(); // snapshot before cancelTrace clears it
   cancelTrace(); // clean up drawing layer
 
-  const addresses = [...traceFoundAddresses.values()];
+  const addresses = [...traceFoundAddresses.values()]; // already in path order (Map insertion order)
   if (!addresses.length) {
     alert('No house addresses found along that path. Try tracing along a residential street closer to the houses.');
     return;
   }
 
-  sortByPathOrder(addresses, savedPath);
   renderTraceReview(addresses);
 }
 
@@ -2613,6 +2595,7 @@ function reverseGeocodeTrace(latLng) {
       if (status === 'OK' && results && results.length) {
         const r = results.find(res => res.types.includes('street_address'))
                || results.find(res => res.types.includes('premise'));
+        // Only store if not seen yet — first sample to find it wins, preserving path order
         if (r && !traceFoundAddresses.has(r.formatted_address)) {
           const comps = r.address_components;
           const get  = t => (comps.find(c => c.types.includes(t)) || {}).short_name || '';
