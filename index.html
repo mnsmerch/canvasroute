@@ -1601,11 +1601,53 @@ function doInitMap() {
   new google.maps.places.Autocomplete(document.getElementById('editJobAddr'), { types: ['address'] });
 
   map.addListener('click', e => {
-    if (traceMode) { addTracePoint(e.latLng); return; }
+    if (traceMode) {
+      if (freehandWasDragging) { freehandWasDragging = false; return; } // suppress click after drag
+      addTracePoint(e.latLng);
+      return;
+    }
     if (addMode) addStop(e.latLng);
   });
   map.addListener('dblclick', e => {
     if (traceMode) { e.stop(); finishTrace(); }
+  });
+  // Freehand: hold mouse and drag to draw curves
+  map.addListener('mousedown', e => {
+    if (!traceMode) return;
+    freehandMouseDown = true;
+    freehandActive = false;
+  });
+  map.addListener('mousemove', e => {
+    if (!traceMode || !freehandMouseDown) return;
+    if (!freehandActive) {
+      freehandActive = true;
+      freehandWasDragging = true;
+      map.setOptions({ draggable: false }); // prevent map panning while drawing
+      if (!tracePath.length) addFreehandPoint(e.latLng); // seed first point
+    }
+    const last = tracePath[tracePath.length - 1];
+    if (last && haversineMeters(last.lat(), last.lng(), e.latLng.lat(), e.latLng.lng()) >= 8) {
+      addFreehandPoint(e.latLng);
+    }
+  });
+  map.addListener('mouseup', e => {
+    if (!traceMode) return;
+    if (freehandActive) {
+      const last = tracePath[tracePath.length - 1];
+      if (last && haversineMeters(last.lat(), last.lng(), e.latLng.lat(), e.latLng.lng()) > 1) {
+        addFreehandPoint(e.latLng);
+      }
+      map.setOptions({ draggable: true });
+      freehandActive = false;
+    }
+    freehandMouseDown = false;
+  });
+  // Safety net: if mouse is released outside the map, end freehand cleanly
+  window.addEventListener('mouseup', () => {
+    if (!traceMode || !freehandActive) return;
+    map.setOptions({ draggable: true });
+    freehandActive = false;
+    freehandMouseDown = false;
   });
 
   // Load routes from cloud then reveal app
@@ -2459,12 +2501,16 @@ function toggleMode() {
 
 // ── TRACE PATH ───────────────────────────────────
 let traceMode = false;
-let tracePath = [];        // google.maps.LatLng waypoints user clicked
+let tracePath = [];
 let tracePolyline = null;
 let traceNodeMarkers = [];
 let traceFoundAddresses = new Map();
 let traceReviewAddresses = [];
 let traceChecked = new Set();
+// Freehand state
+let freehandMouseDown = false;
+let freehandActive = false;
+let freehandWasDragging = false;
 
 function startTrace() {
   traceMode = true;
@@ -2483,13 +2529,17 @@ function startTrace() {
   document.getElementById('map').style.cursor = 'crosshair';
   // Update pill
   const p = document.getElementById('pill');
-  p.innerHTML = '<div class="dot" style="background:#0891b2;"></div>CLICK MAP TO DRAW PATH · DOUBLE-CLICK TO FINISH';
+  p.innerHTML = '<div class="dot" style="background:#0891b2;"></div>CLICK to add points · HOLD &amp; DRAG to draw curves · DOUBLE-CLICK to finish';
   p.style.display = 'flex';
 }
 
 function cancelTrace() {
   traceMode = false;
   tracePath = [];
+  freehandActive = false;
+  freehandMouseDown = false;
+  freehandWasDragging = false;
+  map.setOptions({ draggable: true }); // ensure panning is always restored
   if (tracePolyline) { tracePolyline.setMap(null); tracePolyline = null; }
   traceNodeMarkers.forEach(m => m.setMap(null));
   traceNodeMarkers = [];
@@ -2524,6 +2574,24 @@ function addTracePoint(latLng) {
     icon: { path: google.maps.SymbolPath.CIRCLE, scale: 5, fillColor: '#0891b2', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
     clickable: false, zIndex: 900
   }));
+}
+
+// Freehand version: updates polyline only, no dot marker (avoids hundreds of markers)
+function addFreehandPoint(latLng) {
+  tracePath.push(latLng);
+  if (!tracePolyline) {
+    tracePolyline = new google.maps.Polyline({
+      path: tracePath,
+      geodesic: true,
+      strokeColor: '#0891b2',
+      strokeOpacity: 0.85,
+      strokeWeight: 4,
+      icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '16px' }],
+      map
+    });
+  } else {
+    tracePolyline.setPath(tracePath);
+  }
 }
 
 function finishTrace() {
