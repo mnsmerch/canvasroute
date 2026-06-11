@@ -2824,14 +2824,22 @@ function geocodeLocation(latLng, retries = 4) {
   });
 }
 
-// Pull a real house address out of a geocoder result set and record it (deduped)
-function recordTraceResult(results) {
+// Pull a real house address out of a geocoder result set and record it (deduped).
+// `arc` = distance along the traced path of the probe that found it; used to
+// order houses in the sequence the path was drawn. Keep the smallest (earliest).
+function recordTraceResult(results, arc) {
   if (!results || !results.length) return;
   const r = results.find(res => res.types.includes('street_address'))
          || results.find(res => res.types.includes('premise'));
   if (!r) return;
   const key = r.formatted_address;
-  if (traceFoundAddresses.has(key)) return;
+  if (traceFoundAddresses.has(key)) {
+    if (arc !== undefined) {
+      const e = traceFoundAddresses.get(key);
+      if (e._arc === undefined || arc < e._arc) e._arc = arc;
+    }
+    return;
+  }
 
   const comps = r.address_components;
   const get  = t => (comps.find(c => c.types.includes(t)) || {}).short_name || '';
@@ -2843,13 +2851,17 @@ function recordTraceResult(results) {
   const lat = r.geometry.location.lat(), lng = r.geometry.location.lng();
   // Near-duplicate guard: same house returned with slightly different formatting
   for (const a of traceFoundAddresses.values()) {
-    if (haversineMeters(lat, lng, a.lat, a.lng) < 8) return;
+    if (haversineMeters(lat, lng, a.lat, a.lng) < 8) {
+      if (arc !== undefined && (a._arc === undefined || arc < a._arc)) a._arc = arc;
+      return;
+    }
   }
   traceFoundAddresses.set(key, {
     fullAddress: r.formatted_address,
     street: [streetNum, getL('route')].filter(Boolean).join(' '),
     city: [getL('locality') || getL('sublocality') || '', get('administrative_area_level_1'), get('postal_code')].filter(Boolean).join(', '),
-    lat, lng
+    lat, lng,
+    _arc: arc
   });
 }
 
@@ -2903,23 +2915,26 @@ function buildGridInsidePolygon(poly) {
   return []; // fallback (shouldn't happen)
 }
 
-// Build probe points for an OPEN line trace: centerline + both sides, several
-// set-back distances, so houses fronting either side of the line are all caught.
-function buildPerpendicularProbes(samples) {
-  const OFFSETS = [12, 24, 36];
-  const pts = [];
+// Build probe points for an OPEN line trace: centerline + both sides. Offsets
+// are kept modest so we catch houses fronting the traced street without bleeding
+// into the next street over. Each probe carries its arc-length along the path so
+// found houses can be ordered in the sequence the line was drawn.
+function buildPerpendicularProbes(samples, cumDist) {
+  const OFFSETS = [11, 20];
+  const probes = [];
   for (let i = 0; i < samples.length; i++) {
     const here = samples[i];
     const prev = samples[Math.max(0, i - 1)];
     const next = samples[Math.min(samples.length - 1, i + 1)];
     const dir = bearingDeg(prev, next);
-    pts.push(here);
+    const arc = cumDist[i];
+    probes.push({ pt: here, arc });
     OFFSETS.forEach(off => {
-      pts.push(offsetLatLng(here.lat(), here.lng(), (dir + 90) % 360, off));
-      pts.push(offsetLatLng(here.lat(), here.lng(), (dir + 270) % 360, off));
+      probes.push({ pt: offsetLatLng(here.lat(), here.lng(), (dir + 90) % 360, off), arc });
+      probes.push({ pt: offsetLatLng(here.lat(), here.lng(), (dir + 270) % 360, off), arc });
     });
   }
-  return pts;
+  return probes;
 }
 
 async function processTracePath() {
@@ -2940,7 +2955,11 @@ async function processTracePath() {
     tracePath[tracePath.length - 1].lat(), tracePath[tracePath.length - 1].lng()
   );
   const isLoop = tracePath.length >= 3 && area > 800 && endGap < Math.max(45, pathLen * 0.12);
-  const probePoints = isLoop ? buildGridInsidePolygon(tracePath) : buildPerpendicularProbes(samples);
+  // Both modes yield probes shaped { pt, arc }. Loop-mode grid points have no
+  // arc (undefined) and get ordered afterward by nearest perimeter sample.
+  const probePoints = isLoop
+    ? buildGridInsidePolygon(tracePath).map(pt => ({ pt, arc: undefined }))
+    : buildPerpendicularProbes(samples, cumDist);
 
   traceFoundAddresses = new Map();
   const scanModal = document.getElementById('ovTraceScan');
@@ -2955,8 +2974,9 @@ async function processTracePath() {
 
   const BATCH = 6;
   for (let i = 0; i < probePoints.length; i += BATCH) {
-    const arr = await Promise.all(probePoints.slice(i, i + BATCH).map(p => geocodeLocation(p)));
-    arr.forEach(recordTraceResult);
+    const batch = probePoints.slice(i, i + BATCH);
+    const arr = await Promise.all(batch.map(p => geocodeLocation(p.pt)));
+    arr.forEach((res, k) => recordTraceResult(res, batch[k].arc));
     const done = Math.min(i + BATCH, probePoints.length);
     scanBar.style.width = Math.round(done / probePoints.length * 100) + '%';
     scanDetail.textContent = `${done} of ${probePoints.length} points · ${traceFoundAddresses.size} houses found`;
@@ -2972,17 +2992,20 @@ async function processTracePath() {
     return;
   }
 
-  // Order houses by position along the drawn path so the route follows your
-  // trace (e.g. down one side of the street and back the other on a loop).
-  addresses.forEach(a => {
-    let best = Infinity, bestArc = 0;
-    for (let i = 0; i < samples.length; i++) {
-      const d = haversineMeters(a.lat, a.lng, samples[i].lat(), samples[i].lng());
-      if (d < best) { best = d; bestArc = cumDist[i]; }
-    }
-    a._arc = bestArc;
-  });
-  addresses.sort((x, y) => x._arc - y._arc);
+  // LINE mode: each house already carries the arc-length of the probe that found
+  // it (the leg of the path nearest it), giving a clean follow-the-line order.
+  // LOOP mode: assign arc by nearest perimeter sample.
+  if (isLoop) {
+    addresses.forEach(a => {
+      let best = Infinity, bestArc = 0;
+      for (let i = 0; i < samples.length; i++) {
+        const d = haversineMeters(a.lat, a.lng, samples[i].lat(), samples[i].lng());
+        if (d < best) { best = d; bestArc = cumDist[i]; }
+      }
+      a._arc = bestArc;
+    });
+  }
+  addresses.sort((x, y) => (x._arc ?? 0) - (y._arc ?? 0));
 
   renderTraceReview(addresses);
 }
