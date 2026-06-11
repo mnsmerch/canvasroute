@@ -485,10 +485,17 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
       <div class="hint">🖱 <b>Click the map</b> to add stops. <b>Drag any pin</b> to move it — address updates automatically.</div>
       <div id="list"><div class="emp">🗺️<br><br>Search for a neighborhood above,<br>then click the map to add stops.</div></div>
       <div class="sbf">
-        <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="exportCSV()">⬇ CSV</button>
-        <label class="btn bh" style="color:var(--ink);border-color:var(--rule);cursor:pointer;text-align:center;">📋 Import<input type="file" accept=".csv,.txt" style="display:none;" onchange="importCSVRoute(this)"></label>
-        <button class="btn bpurple" onclick="openSaveDialog()">💾 Save</button>
-        <button class="btn bg" onclick="openModal()">🖨 Print</button>
+        <div id="sbfNormal" style="display:flex;gap:5px;flex:1 1 100%;flex-wrap:wrap;">
+          <button class="btn bh" style="flex:1;color:var(--ink);border-color:var(--rule);" onclick="exportCSV()">⬇ CSV</button>
+          <label class="btn bh" style="flex:1;color:var(--ink);border-color:var(--rule);cursor:pointer;text-align:center;">📋 Import<input type="file" accept=".csv,.txt" style="display:none;" onchange="importCSVRoute(this)"></label>
+          <button class="btn bpurple" style="flex:1;" onclick="openSaveDialog()">💾 Save</button>
+          <button class="btn bg" style="flex:1;" onclick="openModal()">🖨 Print</button>
+        </div>
+        <button id="traceBtn" class="btn bh" style="flex:1 1 100%;color:#0891b2;border-color:#0891b2;background:#f0fdff;" onclick="startTrace()">✏️ Trace Path</button>
+        <div id="sbfTrace" style="display:none;flex:1 1 100%;gap:5px;">
+          <button class="btn br" style="flex:1;" onclick="cancelTrace()">✕ Cancel</button>
+          <button id="traceDoneBtn" class="btn bg" style="flex:2;" onclick="finishTrace()">🔍 Find Houses</button>
+        </div>
       </div>
     </div>
     <div id="mw">
@@ -529,6 +536,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 
 <!-- MOBILE MORE MENU -->
 <div id="mobileMenu">
+  <button class="mob-menu-item" onclick="closeMobileMenu();startTrace()">✏️ Trace Path</button>
   <button class="mob-menu-item" onclick="openSaveDialog();closeMobileMenu()">💾 Save Route</button>
   <button class="mob-menu-item" onclick="openModal();closeMobileMenu()">🖨 Print Route</button>
   <button class="mob-menu-item" onclick="openReport();closeMobileMenu()">📊 Report</button>
@@ -818,6 +826,38 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
         <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="cancelImportReview()">Cancel</button>
         <button class="btn bg" style="background:#16a34a;" onclick="confirmImportReview()">Import Selected</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- TRACE SCAN PROGRESS MODAL -->
+<div class="ov" id="ovTraceScan">
+  <div class="mod mod-sm" style="max-width:360px;">
+    <div class="mh"><span>🔍 Finding Houses…</span></div>
+    <div style="padding:20px 20px 24px;">
+      <div id="traceScanMsg" style="font-size:14px;color:var(--ink);margin-bottom:14px;text-align:center;font-weight:700;">Scanning path…</div>
+      <div style="background:#e5e7eb;border-radius:6px;height:10px;overflow:hidden;">
+        <div id="traceScanBar" style="height:100%;width:0%;background:#0891b2;transition:width .15s;border-radius:6px;"></div>
+      </div>
+      <div id="traceScanDetail" style="font-size:11px;color:#6b7280;margin-top:8px;text-align:center;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- TRACE REVIEW MODAL -->
+<div class="ov" id="ovTrace">
+  <div class="mod" style="max-width:560px;">
+    <div class="mh">✏️ Trace Results <button onclick="cancelTraceReview()">×</button></div>
+    <div id="traceInfoBar" style="padding:10px 16px;background:#e0f2fe;border-bottom:1px solid #bae6fd;font-size:12px;color:#075985;line-height:1.5;flex-shrink:0;"></div>
+    <div style="padding:6px 14px;border-bottom:1px solid var(--rule);display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap;">
+      <button onclick="traceSelectAll(true)" style="font-size:11px;padding:4px 10px;border:1px solid #d1d5db;border-radius:5px;background:#f9fafb;color:#374151;cursor:pointer;">✓ Select All</button>
+      <button onclick="traceSelectAll(false)" style="font-size:11px;padding:4px 10px;border:1px solid #d1d5db;border-radius:5px;background:#f9fafb;color:#374151;cursor:pointer;">✕ Deselect All</button>
+      <span id="traceSelCount" style="font-size:12px;color:#6b7280;margin-left:auto;font-weight:700;"></span>
+    </div>
+    <div class="mb" id="mbTrace" style="padding:8px;"></div>
+    <div class="mf">
+      <button class="btn bh" style="color:var(--ink);border-color:var(--rule);" onclick="cancelTraceReview()">Cancel</button>
+      <button class="btn bg" id="traceAddBtn" onclick="confirmTraceAdd()">➕ Add to Route</button>
     </div>
   </div>
 </div>
@@ -1560,7 +1600,13 @@ function doInitMap() {
   // Address autocomplete for the Edit Job modal
   new google.maps.places.Autocomplete(document.getElementById('editJobAddr'), { types: ['address'] });
 
-  map.addListener('click', e => { if (addMode) addStop(e.latLng); });
+  map.addListener('click', e => {
+    if (traceMode) { addTracePoint(e.latLng); return; }
+    if (addMode) addStop(e.latLng);
+  });
+  map.addListener('dblclick', e => {
+    if (traceMode) { e.stop(); finishTrace(); }
+  });
 
   // Load routes from cloud then reveal app
   loadRoutesFromCloud().then(() => {
@@ -2409,6 +2455,254 @@ function toggleMode() {
     mb.querySelector('.mob-label').textContent = addMode ? 'Adding' : 'Pan';
     mb.classList.toggle('mob-active', addMode);
   }
+}
+
+// ── TRACE PATH ───────────────────────────────────
+let traceMode = false;
+let tracePath = [];        // google.maps.LatLng waypoints user clicked
+let tracePolyline = null;
+let traceNodeMarkers = [];
+let traceFoundAddresses = new Map();
+let traceReviewAddresses = [];
+let traceChecked = new Set();
+
+function startTrace() {
+  traceMode = true;
+  tracePath = [];
+  if (tracePolyline) { tracePolyline.setMap(null); tracePolyline = null; }
+  traceNodeMarkers.forEach(m => m.setMap(null));
+  traceNodeMarkers = [];
+  // Switch to pan mode so normal clicking doesn't add stops
+  if (addMode) toggleMode();
+  // Show trace UI
+  document.getElementById('sbfNormal').style.display = 'none';
+  document.getElementById('traceBtn').style.display = 'none';
+  document.getElementById('sbfTrace').style.display = 'flex';
+  document.getElementById('traceDoneBtn').textContent = '🔍 Find Houses';
+  document.getElementById('traceDoneBtn').disabled = false;
+  document.getElementById('map').style.cursor = 'crosshair';
+  // Update pill
+  const p = document.getElementById('pill');
+  p.innerHTML = '<div class="dot" style="background:#0891b2;"></div>CLICK MAP TO DRAW PATH · DOUBLE-CLICK TO FINISH';
+  p.style.display = 'flex';
+}
+
+function cancelTrace() {
+  traceMode = false;
+  tracePath = [];
+  if (tracePolyline) { tracePolyline.setMap(null); tracePolyline = null; }
+  traceNodeMarkers.forEach(m => m.setMap(null));
+  traceNodeMarkers = [];
+  document.getElementById('sbfNormal').style.display = 'flex';
+  document.getElementById('traceBtn').style.display = '';
+  document.getElementById('sbfTrace').style.display = 'none';
+  document.getElementById('map').style.cursor = '';
+  const p = document.getElementById('pill');
+  p.innerHTML = '<div class="dot"></div>CLICK MAP TO ADD STOPS';
+  p.style.display = addMode ? 'flex' : 'none';
+}
+
+function addTracePoint(latLng) {
+  tracePath.push(latLng);
+  // Draw/update the path polyline
+  if (!tracePolyline) {
+    tracePolyline = new google.maps.Polyline({
+      path: tracePath,
+      geodesic: true,
+      strokeColor: '#0891b2',
+      strokeOpacity: 0.85,
+      strokeWeight: 4,
+      icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '16px' }],
+      map
+    });
+  } else {
+    tracePolyline.setPath(tracePath);
+  }
+  // Node dot at each click
+  traceNodeMarkers.push(new google.maps.Marker({
+    position: latLng, map,
+    icon: { path: google.maps.SymbolPath.CIRCLE, scale: 5, fillColor: '#0891b2', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
+    clickable: false, zIndex: 900
+  }));
+}
+
+function finishTrace() {
+  if (tracePath.length < 2) { alert('Draw at least 2 points to trace a path.'); return; }
+  const btn = document.getElementById('traceDoneBtn');
+  btn.textContent = '⏳ Scanning…';
+  btn.disabled = true;
+  processTracePath();
+}
+
+// Sample the polyline every stepMeters
+function interpolatePolyline(path, stepMeters) {
+  const result = [path[0]];
+  let carryover = 0;
+  for (let i = 0; i < path.length - 1; i++) {
+    const A = path[i], B = path[i + 1];
+    const segLen = haversineMeters(A.lat(), A.lng(), B.lat(), B.lng());
+    if (segLen === 0) continue;
+    let d = stepMeters - carryover;
+    while (d <= segLen) {
+      const t = d / segLen;
+      result.push(new google.maps.LatLng(A.lat() + t * (B.lat() - A.lat()), A.lng() + t * (B.lng() - A.lng())));
+      d += stepMeters;
+    }
+    carryover = d - segLen;
+  }
+  result.push(path[path.length - 1]);
+  return result;
+}
+
+// Sort found addresses in the order they appear along the traced path
+function sortByPathOrder(addresses, path) {
+  addresses.forEach(addr => {
+    let best = Infinity, bestDist = 0, cumDist = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+      const d = haversineMeters(addr.lat, addr.lng, path[i].lat(), path[i].lng());
+      if (d < best) { best = d; bestDist = cumDist; }
+      cumDist += haversineMeters(path[i].lat(), path[i].lng(), path[i+1].lat(), path[i+1].lng());
+    }
+    const dLast = haversineMeters(addr.lat, addr.lng, path[path.length-1].lat(), path[path.length-1].lng());
+    if (dLast < best) bestDist = cumDist;
+    addr._pathDist = bestDist;
+  });
+  addresses.sort((a, b) => a._pathDist - b._pathDist);
+}
+
+async function processTracePath() {
+  const STEP = 12; // meters between samples — ~1 per house lot
+  const samples = interpolatePolyline(tracePath, STEP);
+  traceFoundAddresses = new Map();
+
+  const scanModal = document.getElementById('ovTraceScan');
+  const scanBar = document.getElementById('traceScanBar');
+  const scanDetail = document.getElementById('traceScanDetail');
+  document.getElementById('traceScanMsg').textContent = `Scanning ${samples.length} points along your path…`;
+  scanBar.style.width = '0%';
+  scanDetail.textContent = '';
+  scanModal.classList.add('on');
+
+  const BATCH = 5;
+  for (let i = 0; i < samples.length; i += BATCH) {
+    await Promise.all(samples.slice(i, i + BATCH).map(pt => reverseGeocodeTrace(pt)));
+    const pct = Math.min(Math.round((i + BATCH) / samples.length * 100), 100);
+    scanBar.style.width = pct + '%';
+    scanDetail.textContent = `${Math.min(i + BATCH, samples.length)} of ${samples.length} points · ${traceFoundAddresses.size} addresses found`;
+    if (i + BATCH < samples.length) await new Promise(r => setTimeout(r, 120));
+  }
+
+  scanModal.classList.remove('on');
+  cancelTrace(); // clean up drawing layer
+
+  const addresses = [...traceFoundAddresses.values()];
+  if (!addresses.length) {
+    alert('No house addresses found along that path. Try tracing along a residential street closer to the houses.');
+    return;
+  }
+
+  sortByPathOrder(addresses, tracePath);
+  renderTraceReview(addresses);
+}
+
+function reverseGeocodeTrace(latLng) {
+  return new Promise(resolve => {
+    geocoder.geocode({ location: latLng }, (results, status) => {
+      if (status === 'OK' && results && results.length) {
+        const r = results.find(res => res.types.includes('street_address'))
+               || results.find(res => res.types.includes('premise'));
+        if (r && !traceFoundAddresses.has(r.formatted_address)) {
+          const comps = r.address_components;
+          const get  = t => (comps.find(c => c.types.includes(t)) || {}).short_name || '';
+          const getL = t => (comps.find(c => c.types.includes(t)) || {}).long_name  || '';
+          traceFoundAddresses.set(r.formatted_address, {
+            fullAddress: r.formatted_address,
+            street: [get('street_number'), getL('route')].filter(Boolean).join(' '),
+            city: [getL('locality') || getL('sublocality') || '', get('administrative_area_level_1'), get('postal_code')].filter(Boolean).join(', '),
+            lat: r.geometry.location.lat(),
+            lng: r.geometry.location.lng()
+          });
+        }
+      }
+      resolve();
+    });
+  });
+}
+
+function renderTraceReview(addresses) {
+  traceReviewAddresses = addresses;
+  traceChecked = new Set(addresses.map((_, i) => i)); // all checked by default
+  document.getElementById('traceInfoBar').innerHTML = `<strong>${addresses.length} addresses</strong> found along your path. Uncheck any you don't want to add, then click <strong>Add to Route</strong>.`;
+  document.getElementById('mbTrace').innerHTML = addresses.map((addr, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 8px;background:#fff;border:1px solid var(--rule);border-radius:5px;margin-bottom:4px;">
+      <input type="checkbox" id="trc_${i}" checked onchange="toggleTraceItem(${i})"
+        style="width:16px;height:16px;cursor:pointer;flex-shrink:0;accent-color:#0284c7;">
+      <div class="sn" style="background:#0891b2;flex-shrink:0;">${i + 1}</div>
+      <div class="ad" style="flex:1;min-width:0;">
+        <div class="st">${x(addr.street)}</div>
+        <div class="ci">${x(addr.city)}</div>
+      </div>
+    </div>`).join('');
+  updateTraceSelCount();
+  document.getElementById('ovTrace').classList.add('on');
+}
+
+function toggleTraceItem(i) {
+  const cb = document.getElementById('trc_' + i);
+  if (cb.checked) traceChecked.add(i); else traceChecked.delete(i);
+  updateTraceSelCount();
+}
+
+function traceSelectAll(val) {
+  traceReviewAddresses.forEach((_, i) => {
+    traceChecked[val ? 'add' : 'delete'](i);
+    const cb = document.getElementById('trc_' + i);
+    if (cb) cb.checked = val;
+  });
+  updateTraceSelCount();
+}
+
+function updateTraceSelCount() {
+  const n = traceChecked.size, total = traceReviewAddresses.length;
+  const countEl = document.getElementById('traceSelCount');
+  if (countEl) countEl.textContent = `${n} of ${total} selected`;
+  const btn = document.getElementById('traceAddBtn');
+  if (btn) { btn.textContent = `➕ Add ${n} to Route`; btn.disabled = n === 0; }
+}
+
+function cancelTraceReview() {
+  document.getElementById('ovTrace').classList.remove('on');
+}
+
+function confirmTraceAdd() {
+  const toAdd = [...traceChecked].sort((a, b) => a - b).map(i => traceReviewAddresses[i]);
+  document.getElementById('ovTrace').classList.remove('on');
+  toAdd.forEach(addr => addStopDirect(addr.street, addr.city, addr.lat, addr.lng, addr.fullAddress));
+}
+
+function addStopDirect(street, city, lat, lng, fullAddress) {
+  const id = ++idc;
+  const latLng = new google.maps.LatLng(lat, lng);
+  const marker = new google.maps.Marker({
+    position: latLng, map,
+    icon: mkIcon(stops.length + 1, stops.length === 0 ? 'first' : 'mid'),
+    zIndex: 100 + stops.length,
+    draggable: true, cursor: 'grab'
+  });
+  marker.addListener('click', () => highlight(id));
+  marker.addListener('dragstart', () => marker.setOpacity(0.6));
+  marker.addListener('dragend', e => {
+    marker.setOpacity(1);
+    const stop = stops.find(s => s.id === id);
+    if (!stop) return;
+    stop.pos = e.latLng; stop.street = 'Loading…'; stop.city = ''; stop.fullAddress = '';
+    redrawLine(); renderList(); reverseGeocode(e.latLng, id);
+  });
+  const nearJobs = completedJobs.length ? findJobsNear(lat, lng) : [];
+  const note = nearJobs.length ? nearJobs.map(j => j.description).join(', ') : '';
+  stops.push({ id, pos: latLng, street, city, fullAddress, note, marker });
+  activeStopId = id;
+  refreshIcons(); redrawLine(); renderList();
 }
 
 // ── SEARCH ────────────────────────────────────────
