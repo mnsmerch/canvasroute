@@ -763,25 +763,31 @@ function onStatsDateChange() {
 }
 
 function computeStats(routes, fromMs, toMs) {
+  const ranged = fromMs !== null || toMs !== null;
   let visited = 0, leads = 0, lcl = 0;
   let totalSpanMs = 0;
 
   routes.forEach(r => {
-    const inRange = [];
+    const timed = [];
     (r.stops || []).forEach(s => {
-      if (!s.status || !s.statusAt) return;
-      const t = new Date(s.statusAt).getTime();
-      if (isNaN(t)) return;
-      if (fromMs !== null && t < fromMs) return;
-      if (toMs   !== null && t > toMs)   return;
+      if (!s.status) return;
+      const t = s.statusAt ? new Date(s.statusAt).getTime() : null;
+      const hasT = t !== null && !isNaN(t);
+      if (ranged) {
+        // A date range can only include stops that actually have a timestamp
+        if (!hasT) return;
+        if (fromMs !== null && t < fromMs) return;
+        if (toMs   !== null && t > toMs)   return;
+      }
+      // "All Time" counts every responded stop, even early ones missing a timestamp
       visited++;
-      inRange.push(t);
+      if (hasT) timed.push(t);
       if (s.status === 'Lead') leads++;
       else if (s.status === 'Lead Contact Later') lcl++;
     });
-    // Active canvassing time on this route = span between first and last marked stop
-    if (inRange.length >= 2) {
-      totalSpanMs += Math.max(...inRange) - Math.min(...inRange);
+    // Active canvassing time on this route = span between first and last TIMED stop
+    if (timed.length >= 2) {
+      totalSpanMs += Math.max(...timed) - Math.min(...timed);
     }
   });
 
