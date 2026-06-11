@@ -665,11 +665,18 @@ async function loadMyRoutes() {
     }
 
     // Hide finished routes so only new / in-progress ones show
-    renderRoutesList(mine.filter(r => !r.completed));
+    renderRoutesList(mine.filter(r => !isRouteFinished(r)));
   } catch(e) {
     console.error(e);
     listEl.innerHTML = '<div class="empty-msg" style="color:#ef4444;">⚠️ Failed to load routes.<br>Check your connection and try again.</div>';
   }
+}
+
+// A route is finished if it was ended (completed) or every stop has a response
+function isRouteFinished(r) {
+  if (r.completed) return true;
+  const stops = r.stops || [];
+  return stops.length > 0 && stops.every(s => s.status);
 }
 
 function renderRoutesList(routes) {
