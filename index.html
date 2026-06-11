@@ -2659,7 +2659,7 @@ function startTrace() {
   document.getElementById('map').style.cursor = 'crosshair';
   // Update pill
   const p = document.getElementById('pill');
-  p.innerHTML = '<div class="dot" style="background:#0891b2;"></div>CLICK to add points · HOLD &amp; DRAG to draw curves · DOUBLE-CLICK to finish';
+  p.innerHTML = '<div class="dot" style="background:#0891b2;"></div>Draw a LOOP around a block to grab every house inside · HOLD &amp; DRAG for curves · DOUBLE-CLICK to finish';
   p.style.display = 'flex';
 }
 
@@ -2853,47 +2853,107 @@ function recordTraceResult(results) {
   });
 }
 
-async function processTracePath() {
-  const STEP = 15;           // meters between samples along the path
-  const OFFSETS = [15, 30];  // meters to probe perpendicular to EACH side (catches set-back houses)
-  const samples = interpolatePolyline(tracePath, STEP);
-  // Cumulative distance along the path at each sample — used to order houses by
-  // how far along the traced line they sit, so the route follows the path.
-  const cumDist = [0];
-  for (let i = 1; i < samples.length; i++) {
-    cumDist[i] = cumDist[i - 1] + haversineMeters(samples[i-1].lat(), samples[i-1].lng(), samples[i].lat(), samples[i].lng());
+// Area (m²) enclosed by the traced path (shoelace, local planar projection)
+function polygonAreaM2(poly) {
+  if (poly.length < 3) return 0;
+  const lat0 = poly[0].lat() * Math.PI / 180;
+  const mLat = 111320, mLng = 111320 * Math.cos(lat0);
+  let area = 0;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].lng() * mLng, yi = poly[i].lat() * mLat;
+    const xj = poly[j].lng() * mLng, yj = poly[j].lat() * mLat;
+    area += xj * yi - xi * yj;
   }
-  traceFoundAddresses = new Map();
+  return Math.abs(area / 2);
+}
 
-  const scanModal = document.getElementById('ovTraceScan');
-  const scanBar   = document.getElementById('traceScanBar');
-  const scanDetail = document.getElementById('traceScanDetail');
-  document.getElementById('traceScanMsg').textContent = `Scanning ${samples.length} points along your path…`;
-  scanBar.style.width = '0%';
-  scanDetail.textContent = '';
-  scanModal.classList.add('on');
+// Ray-casting point-in-polygon test (polygon auto-closed)
+function pointInPolygon(lat, lng, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const yi = poly[i].lat(), xi = poly[i].lng();
+    const yj = poly[j].lat(), xj = poly[j].lng();
+    if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
 
-  // Process samples in path order. At each point probe the centerline plus
-  // both sides of the street, so houses set back from the road aren't missed.
+// Build a grid of probe points covering the INTERIOR of a traced loop.
+// Auto-coarsens the grid so we never exceed ~400 probes (keeps geocoding sane).
+function buildGridInsidePolygon(poly) {
+  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+  poly.forEach(p => {
+    minLat = Math.min(minLat, p.lat()); maxLat = Math.max(maxLat, p.lat());
+    minLng = Math.min(minLng, p.lng()); maxLng = Math.max(maxLng, p.lng());
+  });
+  const lat0 = (minLat + maxLat) / 2 * Math.PI / 180;
+  for (let stepM = 14; stepM <= 60; stepM += 4) {
+    const latStep = stepM / 111320;
+    const lngStep = stepM / (111320 * Math.cos(lat0));
+    const pts = [];
+    for (let lat = minLat; lat <= maxLat; lat += latStep) {
+      for (let lng = minLng; lng <= maxLng; lng += lngStep) {
+        if (pointInPolygon(lat, lng, poly)) pts.push(new google.maps.LatLng(lat, lng));
+      }
+    }
+    if (pts.length <= 400) return pts;
+  }
+  return []; // fallback (shouldn't happen)
+}
+
+// Build probe points for an OPEN line trace: centerline + both sides set back
+function buildPerpendicularProbes(samples) {
+  const OFFSETS = [15, 30];
+  const pts = [];
   for (let i = 0; i < samples.length; i++) {
     const here = samples[i];
     const prev = samples[Math.max(0, i - 1)];
     const next = samples[Math.min(samples.length - 1, i + 1)];
     const dir = bearingDeg(prev, next);
-
-    const probes = [here]; // centerline
+    pts.push(here);
     OFFSETS.forEach(off => {
-      probes.push(offsetLatLng(here.lat(), here.lng(), (dir + 90) % 360, off));  // one side
-      probes.push(offsetLatLng(here.lat(), here.lng(), (dir + 270) % 360, off)); // other side
+      pts.push(offsetLatLng(here.lat(), here.lng(), (dir + 90) % 360, off));
+      pts.push(offsetLatLng(here.lat(), here.lng(), (dir + 270) % 360, off));
     });
+  }
+  return pts;
+}
 
-    const resultsArr = await Promise.all(probes.map(p => geocodeLocation(p)));
-    resultsArr.forEach(recordTraceResult); // center first, then sides — keeps order tidy
+async function processTracePath() {
+  // Dense samples along the drawn path — used to ORDER houses (follow the line)
+  const samples = interpolatePolyline(tracePath, 12);
+  const cumDist = [0];
+  for (let i = 1; i < samples.length; i++) {
+    cumDist[i] = cumDist[i - 1] + haversineMeters(samples[i-1].lat(), samples[i-1].lng(), samples[i].lat(), samples[i].lng());
+  }
 
-    const pct = Math.round((i + 1) / samples.length * 100);
-    scanBar.style.width = pct + '%';
-    scanDetail.textContent = `${i + 1} of ${samples.length} points · ${traceFoundAddresses.size} houses found`;
-    await new Promise(r => setTimeout(r, 25)); // gentle pacing to respect rate limits
+  // Closed loop (encloses real area) → fill the interior so we get EVERY house.
+  // Open line → probe along the line and both sides.
+  const area = polygonAreaM2(tracePath);
+  const isLoop = tracePath.length >= 3 && area > 400;
+  const probePoints = isLoop ? buildGridInsidePolygon(tracePath) : buildPerpendicularProbes(samples);
+
+  traceFoundAddresses = new Map();
+  const scanModal = document.getElementById('ovTraceScan');
+  const scanBar   = document.getElementById('traceScanBar');
+  const scanDetail = document.getElementById('traceScanDetail');
+  document.getElementById('traceScanMsg').textContent = isLoop
+    ? `Scanning everything inside your loop…`
+    : `Scanning along your path…`;
+  scanBar.style.width = '0%';
+  scanDetail.textContent = '';
+  scanModal.classList.add('on');
+
+  const BATCH = 6;
+  for (let i = 0; i < probePoints.length; i += BATCH) {
+    const arr = await Promise.all(probePoints.slice(i, i + BATCH).map(p => geocodeLocation(p)));
+    arr.forEach(recordTraceResult);
+    const done = Math.min(i + BATCH, probePoints.length);
+    scanBar.style.width = Math.round(done / probePoints.length * 100) + '%';
+    scanDetail.textContent = `${done} of ${probePoints.length} points · ${traceFoundAddresses.size} houses found`;
+    await new Promise(r => setTimeout(r, 20));
   }
 
   scanModal.classList.remove('on');
@@ -2901,13 +2961,12 @@ async function processTracePath() {
 
   const addresses = [...traceFoundAddresses.values()];
   if (!addresses.length) {
-    alert('No house addresses found along that path. Try tracing along a residential street closer to the houses.');
+    alert('No houses found. Try tracing a tighter loop right around the block, or trace along the street.');
     return;
   }
 
-  // Order houses by their position ALONG the traced path (arc-length of the
-  // nearest path sample), so the resulting route follows the line you drew
-  // instead of zigzagging between probe sides.
+  // Order houses by position along the drawn path so the route follows your
+  // trace (e.g. down one side of the street and back the other on a loop).
   addresses.forEach(a => {
     let best = Infinity, bestArc = 0;
     for (let i = 0; i < samples.length; i++) {
