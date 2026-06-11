@@ -2556,6 +2556,7 @@ function interpolatePolyline(path, stepMeters) {
 
 // Sort found addresses in the order they appear along the traced path
 function sortByPathOrder(addresses, path) {
+  if (!path || path.length < 2) return;
   addresses.forEach(addr => {
     let best = Infinity, bestDist = 0, cumDist = 0;
     for (let i = 0; i < path.length - 1; i++) {
@@ -2593,6 +2594,7 @@ async function processTracePath() {
   }
 
   scanModal.classList.remove('on');
+  const savedPath = tracePath.slice(); // snapshot before cancelTrace clears it
   cancelTrace(); // clean up drawing layer
 
   const addresses = [...traceFoundAddresses.values()];
@@ -2601,7 +2603,7 @@ async function processTracePath() {
     return;
   }
 
-  sortByPathOrder(addresses, tracePath);
+  sortByPathOrder(addresses, savedPath);
   renderTraceReview(addresses);
 }
 
