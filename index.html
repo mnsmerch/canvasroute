@@ -482,7 +482,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
           <option value="">— Select canvasser —</option>
         </select>
       </div>
-      <div class="hint">🖱 <b>Click the map</b> to add stops. <b>Drag any pin</b> to move it — address updates automatically.</div>
+      <div class="hint">🖱 <b>Click</b> to add stops · <b>Right-click</b> a missed house to slot it into the route · <b>Drag</b> a pin to move it.</div>
       <div id="routeStats" style="display:none;padding:10px;border-bottom:1px solid var(--rule);background:#fff;gap:8px;">
         <div style="flex:1;background:#f3f2f7;border-radius:10px;padding:10px 8px;text-align:center;">
           <div style="font-size:22px;font-weight:900;color:#1a2744;line-height:1;" id="rsHouses">0</div>
@@ -505,9 +505,13 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
           <button class="btn bpurple" style="flex:1;" onclick="openSaveDialog()">💾 Save</button>
           <button class="btn bg" style="flex:1;" onclick="openModal()">🖨 Print</button>
         </div>
-        <button id="traceBtn" class="btn bh" style="flex:1 1 100%;color:#0891b2;border-color:#0891b2;background:#f0fdff;" onclick="startTrace()">✏️ Trace Path</button>
+        <div style="display:flex;gap:5px;flex:1 1 100%;">
+          <button id="undoBtn" class="btn bh" style="flex:1;color:#6b7280;border-color:var(--rule);" onclick="undoLastAction()" disabled title="Undo (Ctrl/Cmd+Z)">↶ Undo</button>
+          <button id="traceBtn" class="btn bh" style="flex:2;color:#0891b2;border-color:#0891b2;background:#f0fdff;" onclick="startTrace()">✏️ Trace Path</button>
+        </div>
         <div id="sbfTrace" style="display:none;flex:1 1 100%;gap:5px;">
           <button class="btn br" style="flex:1;" onclick="cancelTrace()">✕ Cancel</button>
+          <button class="btn bh" style="flex:1;color:#6b7280;border-color:var(--rule);" onclick="undoLastTracePoint()">↶ Undo Pt</button>
           <button id="traceDoneBtn" class="btn bg" style="flex:2;" onclick="finishTrace()">🔍 Find Houses</button>
         </div>
       </div>
@@ -550,6 +554,7 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
 
 <!-- MOBILE MORE MENU -->
 <div id="mobileMenu">
+  <button class="mob-menu-item" id="mobUndoBtn" onclick="closeMobileMenu();undoLastAction()" disabled>↶ Undo Last Change</button>
   <button class="mob-menu-item" onclick="closeMobileMenu();startTrace()">✏️ Trace Path</button>
   <button class="mob-menu-item" onclick="openSaveDialog();closeMobileMenu()">💾 Save Route</button>
   <button class="mob-menu-item" onclick="openModal();closeMobileMenu()">🖨 Print Route</button>
@@ -1625,6 +1630,20 @@ function doInitMap() {
   map.addListener('dblclick', e => {
     if (traceMode) { e.stop(); finishTrace(); }
   });
+  // Right-click a missed house to insert it at the right spot in the route
+  map.addListener('contextmenu', e => {
+    if (traceMode) return;
+    if (e.latLng) insertHouseAtPoint(e.latLng);
+  });
+  // Keyboard undo (Cmd/Ctrl+Z) — only when not typing in a field
+  document.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+      const t = e.target.tagName;
+      if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
+      e.preventDefault();
+      undoLastAction();
+    }
+  });
 
   // Freehand drawing — use native DOM events so we intercept before Google Maps
   // can capture the drag for panning.
@@ -2351,21 +2370,65 @@ function redrawLine() {
 }
 
 // ── ADD STOP ──────────────────────────────────────
-function addStop(latLng) {
-  const id = ++idc;
+// ── UNDO ──────────────────────────────────────────
+let undoStack = [];
+const UNDO_LIMIT = 40;
+
+function snapshotStops() {
+  return stops.map(s => ({
+    id: s.id, lat: s.pos.lat(), lng: s.pos.lng(),
+    street: s.street, city: s.city, fullAddress: s.fullAddress, note: s.note || ''
+  }));
+}
+
+function pushUndo() {
+  undoStack.push(snapshotStops());
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  updateUndoBtn();
+}
+
+function rebuildStopsFromSnapshot(snap) {
+  stops.forEach(s => s.marker.setMap(null));
+  stops = snap.map(d => {
+    const latLng = new google.maps.LatLng(d.lat, d.lng);
+    const marker = makeStopMarker(d.id, latLng);
+    if (d.id > idc) idc = d.id;
+    return { id: d.id, pos: latLng, street: d.street, city: d.city, fullAddress: d.fullAddress, note: d.note, marker };
+  });
+  refreshIcons(); redrawLine(); renderList();
+}
+
+function undoLastAction() {
+  // While tracing, undo removes the last drawn path point instead
+  if (traceMode) { undoLastTracePoint(); return; }
+  if (!undoStack.length) return;
+  const snap = undoStack.pop();
+  rebuildStopsFromSnapshot(snap);
+  updateUndoBtn();
+}
+
+function updateUndoBtn() {
+  ['undoBtn', 'mobUndoBtn'].forEach(bid => {
+    const b = document.getElementById(bid);
+    if (b) b.disabled = undoStack.length === 0;
+  });
+}
+
+// ── SHARED STOP MARKER ────────────────────────────
+function makeStopMarker(id, latLng) {
   const marker = new google.maps.Marker({
     position: latLng, map,
-    icon: mkIcon(stops.length + 1, stops.length === 0 ? 'first' : 'mid'),
     zIndex: 100 + stops.length,
     draggable: true,
     cursor: 'grab'
   });
   marker.addListener('click', () => highlight(id));
-  marker.addListener('dragstart', () => { marker.setOpacity(0.6); });
-  marker.addListener('dragend', (e) => {
+  marker.addListener('dragstart', () => marker.setOpacity(0.6));
+  marker.addListener('dragend', e => {
     marker.setOpacity(1);
     const stop = stops.find(s => s.id === id);
     if (!stop) return;
+    pushUndo();
     stop.pos = e.latLng;
     stop.street = 'Loading…';
     stop.city = '';
@@ -2374,6 +2437,13 @@ function addStop(latLng) {
     renderList();
     reverseGeocode(e.latLng, id);
   });
+  return marker;
+}
+
+function addStop(latLng) {
+  pushUndo();
+  const id = ++idc;
+  const marker = makeStopMarker(id, latLng);
   stops.push({ id, pos: latLng, street: 'Loading…', city: '', fullAddress: '', note: '', marker });
   activeStopId = id;
   refreshIcons(); redrawLine(); renderList();
@@ -2499,6 +2569,7 @@ function attachDragListeners() {
     item.addEventListener('drop', e => {
       e.preventDefault();
       if (dragSrcId === null || dragSrcId === id) return;
+      pushUndo();
       const fromIdx = stops.findIndex(s => s.id === dragSrcId);
       const toIdx   = stops.findIndex(s => s.id === id);
       if (fromIdx < 0 || toIdx < 0) return;
@@ -2529,12 +2600,14 @@ function highlight(id) {
 
 function del(id) {
   const i = stops.findIndex(s => s.id === id); if (i < 0) return;
+  pushUndo();
   stops[i].marker.setMap(null); stops.splice(i, 1);
   refreshIcons(); redrawLine(); renderList();
 }
 
 function clearAll() {
   if (stops.length > 0 && !confirm('Clear current route? (Saved routes are not affected.)')) return;
+  if (stops.length > 0) pushUndo();
   stops.forEach(s => s.marker.setMap(null)); stops = [];
   if (polyline) { polyline.setMap(null); polyline = null; }
   renderList();
@@ -2631,6 +2704,25 @@ function addTracePoint(latLng) {
     icon: { path: google.maps.SymbolPath.CIRCLE, scale: 5, fillColor: '#0891b2', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
     clickable: false, zIndex: 900
   }));
+}
+
+// Undo the last point added while drawing a trace
+function undoLastTracePoint() {
+  if (!tracePath.length) return;
+  const removed = tracePath.pop();
+  // Remove a matching click-node marker if one exists at that position
+  for (let i = traceNodeMarkers.length - 1; i >= 0; i--) {
+    const mp = traceNodeMarkers[i].getPosition();
+    if (mp && Math.abs(mp.lat() - removed.lat()) < 1e-9 && Math.abs(mp.lng() - removed.lng()) < 1e-9) {
+      traceNodeMarkers[i].setMap(null);
+      traceNodeMarkers.splice(i, 1);
+      break;
+    }
+  }
+  if (tracePolyline) {
+    if (tracePath.length) tracePolyline.setPath(tracePath);
+    else { tracePolyline.setMap(null); tracePolyline = null; }
+  }
 }
 
 // Convert browser pixel coords to LatLng using the map's current bounds.
@@ -2805,32 +2897,68 @@ function cancelTraceReview() {
 function confirmTraceAdd() {
   const toAdd = [...traceChecked].sort((a, b) => a - b).map(i => traceReviewAddresses[i]);
   document.getElementById('ovTrace').classList.remove('on');
+  if (toAdd.length) pushUndo(); // one undo reverts the whole batch
   toAdd.forEach(addr => addStopDirect(addr.street, addr.city, addr.lat, addr.lng, addr.fullAddress));
 }
 
 function addStopDirect(street, city, lat, lng, fullAddress) {
   const id = ++idc;
   const latLng = new google.maps.LatLng(lat, lng);
-  const marker = new google.maps.Marker({
-    position: latLng, map,
-    icon: mkIcon(stops.length + 1, stops.length === 0 ? 'first' : 'mid'),
-    zIndex: 100 + stops.length,
-    draggable: true, cursor: 'grab'
-  });
-  marker.addListener('click', () => highlight(id));
-  marker.addListener('dragstart', () => marker.setOpacity(0.6));
-  marker.addListener('dragend', e => {
-    marker.setOpacity(1);
-    const stop = stops.find(s => s.id === id);
-    if (!stop) return;
-    stop.pos = e.latLng; stop.street = 'Loading…'; stop.city = ''; stop.fullAddress = '';
-    redrawLine(); renderList(); reverseGeocode(e.latLng, id);
-  });
+  const marker = makeStopMarker(id, latLng);
   const nearJobs = completedJobs.length ? findJobsNear(lat, lng) : [];
   const note = nearJobs.length ? nearJobs.map(j => j.description).join(', ') : '';
   stops.push({ id, pos: latLng, street, city, fullAddress, note, marker });
   activeStopId = id;
   refreshIcons(); redrawLine(); renderList();
+}
+
+// ── INSERT MISSED HOUSE (right-click) ─────────────
+// Cheapest-insertion: find the position that adds the least detour to the route.
+function bestInsertIndex(p) {
+  const n = stops.length;
+  if (n === 0) return 0;
+  const d = (a, b) => haversineMeters(a.lat(), a.lng(), b.lat(), b.lng());
+  let best = Infinity, bestIdx = n;
+  for (let k = 0; k <= n; k++) {
+    const prev = k > 0 ? stops[k - 1].pos : null;
+    const next = k < n ? stops[k].pos : null;
+    let cost;
+    if (prev && next) cost = d(prev, p) + d(p, next) - d(prev, next);
+    else if (prev)    cost = d(prev, p);
+    else              cost = d(p, next);
+    if (cost < best) { best = cost; bestIdx = k; }
+  }
+  return bestIdx;
+}
+
+function insertHouseAtPoint(latLng) {
+  geocoder.geocode({ location: latLng }, (results, status) => {
+    let street, city = '', fullAddress, pos = latLng;
+    if (status === 'OK' && results && results.length) {
+      const r = results.find(x => x.types.includes('street_address'))
+             || results.find(x => x.types.includes('premise')) || results[0];
+      const comps = r.address_components;
+      const get  = t => (comps.find(c => c.types.includes(t)) || {}).short_name || '';
+      const getL = t => (comps.find(c => c.types.includes(t)) || {}).long_name  || '';
+      street = [get('street_number'), getL('route')].filter(Boolean).join(' ') || 'Unknown Street';
+      city = [getL('locality') || getL('sublocality') || '', get('administrative_area_level_1'), get('postal_code')].filter(Boolean).join(', ');
+      fullAddress = r.formatted_address;
+      pos = r.geometry.location;
+    } else {
+      street = `${latLng.lat().toFixed(5)}, ${latLng.lng().toFixed(5)}`;
+      fullAddress = street;
+    }
+    pushUndo();
+    const idx = bestInsertIndex(pos);
+    const id = ++idc;
+    const marker = makeStopMarker(id, pos);
+    const nearJobs = completedJobs.length ? findJobsNear(pos.lat(), pos.lng()) : [];
+    const note = nearJobs.length ? nearJobs.map(j => j.description).join(', ') : '';
+    stops.splice(idx, 0, { id, pos, street, city, fullAddress, note, marker });
+    activeStopId = id;
+    refreshIcons(); redrawLine(); renderList();
+    highlight(id);
+  });
 }
 
 // ── SEARCH ────────────────────────────────────────
@@ -3272,6 +3400,7 @@ function loadRouteForEdit(id) {
   stops.forEach(s => s.marker.setMap(null));
   stops = [];
   if (polyline) { polyline.setMap(null); polyline = null; }
+  undoStack = []; updateUndoBtn(); // fresh undo history for the loaded route
 
   // Close the modal
   closeSavedRoutes();
