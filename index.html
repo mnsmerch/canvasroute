@@ -2857,6 +2857,12 @@ async function processTracePath() {
   const STEP = 15;           // meters between samples along the path
   const OFFSETS = [15, 30];  // meters to probe perpendicular to EACH side (catches set-back houses)
   const samples = interpolatePolyline(tracePath, STEP);
+  // Cumulative distance along the path at each sample — used to order houses by
+  // how far along the traced line they sit, so the route follows the path.
+  const cumDist = [0];
+  for (let i = 1; i < samples.length; i++) {
+    cumDist[i] = cumDist[i - 1] + haversineMeters(samples[i-1].lat(), samples[i-1].lng(), samples[i].lat(), samples[i].lng());
+  }
   traceFoundAddresses = new Map();
 
   const scanModal = document.getElementById('ovTraceScan');
@@ -2893,11 +2899,24 @@ async function processTracePath() {
   scanModal.classList.remove('on');
   cancelTrace(); // clean up drawing layer
 
-  const addresses = [...traceFoundAddresses.values()]; // path order (Map insertion order)
+  const addresses = [...traceFoundAddresses.values()];
   if (!addresses.length) {
     alert('No house addresses found along that path. Try tracing along a residential street closer to the houses.');
     return;
   }
+
+  // Order houses by their position ALONG the traced path (arc-length of the
+  // nearest path sample), so the resulting route follows the line you drew
+  // instead of zigzagging between probe sides.
+  addresses.forEach(a => {
+    let best = Infinity, bestArc = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const d = haversineMeters(a.lat, a.lng, samples[i].lat(), samples[i].lng());
+      if (d < best) { best = d; bestArc = cumDist[i]; }
+    }
+    a._arc = bestArc;
+  });
+  addresses.sort((x, y) => x._arc - y._arc);
 
   renderTraceReview(addresses);
 }
