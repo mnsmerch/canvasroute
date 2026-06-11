@@ -114,6 +114,28 @@
     .sched-toggle-btn { flex-shrink: 0; padding: 9px 20px; border-radius: 20px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all .15s; }
     .sched-time-input { width: 100%; padding: 11px 10px; border: 1.5px solid #e5e7eb; border-radius: 8px; font-size: 16px; color: #1a2744; background: #fff; outline: none; }
     .sched-time-input:focus { border-color: #6b3fa0; }
+
+    /* ── STATS OVERLAY ── */
+    .stats-ov { position: fixed; inset: 0; background: #f4f0eb; z-index: 300; display: none; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .stats-ov.on { display: flex; }
+    .stats-hero { background: linear-gradient(135deg, #1a2744 0%, #2d3f6b 100%); color: #fff; padding: 22px 18px 26px; text-align: center; }
+    .stats-hero-pct { font-size: 56px; font-weight: 900; line-height: 1; letter-spacing: -1px; }
+    .stats-hero-lbl { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.65); letter-spacing: 1px; margin-top: 6px; text-transform: uppercase; }
+    .stats-hero-sub { font-size: 12px; color: rgba(255,255,255,.5); margin-top: 8px; }
+    .stats-range { display: flex; gap: 7px; padding: 12px; flex-wrap: wrap; justify-content: center; }
+    .stats-chip { padding: 8px 14px; border-radius: 20px; font-size: 13px; font-weight: 700; border: 1.5px solid #d1d5db; background: #fff; color: #374151; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .stats-chip.active { background: #1a2744; border-color: #1a2744; color: #fff; }
+    .stats-dates { display: flex; gap: 8px; padding: 0 12px 8px; align-items: flex-end; }
+    .stats-date-field { flex: 1; }
+    .stats-date-field label { font-size: 10px; font-weight: 700; color: #6b7280; letter-spacing: .5px; display: block; margin-bottom: 4px; }
+    .stats-date-field input { width: 100%; padding: 10px; border: 1.5px solid #e5e7eb; border-radius: 8px; font-size: 15px; color: #1a2744; background: #fff; outline: none; }
+    .stats-date-field input:focus { border-color: #6b3fa0; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 4px 12px 24px; }
+    .stat-card { background: #fff; border-radius: 14px; padding: 16px 14px; box-shadow: 0 1px 5px rgba(0,0,0,.07); border-left: 5px solid #6b3fa0; }
+    .stat-card.wide { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; }
+    .stat-card-num { font-size: 30px; font-weight: 900; color: #1a2744; line-height: 1; }
+    .stat-card-lbl { font-size: 11px; font-weight: 700; color: #6b7280; letter-spacing: .4px; margin-top: 6px; text-transform: uppercase; }
+    .stat-card-icon { font-size: 30px; flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -168,6 +190,7 @@
 <div class="screen" id="screenRoutes">
   <div class="topbar">
     <div class="topbar-title">📂 My Routes</div>
+    <button class="topbar-btn" onclick="openStats()" style="background:rgba(255,255,255,.2);">📊 Stats</button>
     <button class="topbar-btn" onclick="openSchedule()" style="background:rgba(255,255,255,.2);">📅 Schedule</button>
     <button class="topbar-btn" onclick="logout()">Sign Out</button>
   </div>
@@ -332,6 +355,59 @@
     </div>
   </div>
   <div id="schedDayRows" style="padding:0 0 24px;"></div>
+</div>
+
+<!-- ════════ STATS OVERLAY ════════ -->
+<div class="stats-ov" id="statsOverlay">
+  <div class="topbar" style="position:sticky;top:0;z-index:10;">
+    <button class="topbar-btn" onclick="closeStats()">← Back</button>
+    <div class="topbar-title">📊 My Performance</div>
+  </div>
+  <div class="stats-hero">
+    <div class="stats-hero-pct" id="statHeroPct">0%</div>
+    <div class="stats-hero-lbl">Lead Conversion Rate</div>
+    <div class="stats-hero-sub" id="statHeroSub">Keep knocking — every door counts! 💪</div>
+  </div>
+  <div class="stats-range" id="statsChips">
+    <button class="stats-chip" data-range="week" onclick="setStatsRange('week')">This Week</button>
+    <button class="stats-chip" data-range="month" onclick="setStatsRange('month')">This Month</button>
+    <button class="stats-chip active" data-range="all" onclick="setStatsRange('all')">All Time</button>
+  </div>
+  <div class="stats-dates">
+    <div class="stats-date-field">
+      <label>FROM</label>
+      <input type="date" id="statFrom" onchange="onStatsDateChange()">
+    </div>
+    <div class="stats-date-field">
+      <label>TO</label>
+      <input type="date" id="statTo" onchange="onStatsDateChange()">
+    </div>
+  </div>
+  <div class="stats-grid" id="statsGrid">
+    <div class="stat-card" style="border-left-color:#1a2744;">
+      <div class="stat-card-num" id="statVisited">0</div>
+      <div class="stat-card-lbl">🏠 Houses Visited</div>
+    </div>
+    <div class="stat-card" style="border-left-color:#15803d;">
+      <div class="stat-card-num" id="statLeads" style="color:#15803d;">0</div>
+      <div class="stat-card-lbl">✅ Leads</div>
+    </div>
+    <div class="stat-card" style="border-left-color:#5b21b6;">
+      <div class="stat-card-num" id="statLCL" style="color:#5b21b6;">0</div>
+      <div class="stat-card-lbl">🕓 Lead Contact Later</div>
+    </div>
+    <div class="stat-card" style="border-left-color:#e8601a;">
+      <div class="stat-card-num" id="statTotalConv" style="color:#e8601a;">0</div>
+      <div class="stat-card-lbl">🔥 Total Conversions</div>
+    </div>
+    <div class="stat-card wide" style="border-left-color:#0891b2;">
+      <div class="stat-card-icon">⏱️</div>
+      <div>
+        <div class="stat-card-num" id="statAvgTime" style="color:#0891b2;">—</div>
+        <div class="stat-card-lbl">Avg Time Per Lead</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -577,7 +653,8 @@ async function loadMyRoutes() {
   listEl.innerHTML = '<div class="empty-msg">Loading your routes…</div>';
   try {
     const snap = await db.collection('routes').orderBy('id', 'desc').get();
-    const myRoutes = snap.docs.map(d => d.data()).filter(r => r.canvasser === currentCanvasser);
+    // Hide routes the canvasser has finished (completed at clock-out) so only new/in-progress show
+    const myRoutes = snap.docs.map(d => d.data()).filter(r => r.canvasser === currentCanvasser && !r.completed);
     renderRoutesList(myRoutes);
   } catch(e) {
     console.error(e);
@@ -606,6 +683,129 @@ function renderRoutesList(routes) {
       </div>
     </div>`;
   }).join('');
+}
+
+// ── STATS / PERFORMANCE ───────────────────────────
+let statsRoutesCache = null;
+let statsRange = 'all';
+
+async function openStats() {
+  document.getElementById('statsOverlay').classList.add('on');
+  statsRange = 'all';
+  setStatsChipActive('all');
+  document.getElementById('statFrom').value = '';
+  document.getElementById('statTo').value = '';
+  // Loading state
+  document.getElementById('statHeroPct').textContent = '…';
+  try {
+    const snap = await db.collection('routes').orderBy('id', 'desc').get();
+    statsRoutesCache = snap.docs.map(d => d.data()).filter(r => r.canvasser === currentCanvasser);
+  } catch(e) {
+    statsRoutesCache = [];
+  }
+  renderStats();
+}
+
+function closeStats() {
+  document.getElementById('statsOverlay').classList.remove('on');
+}
+
+function setStatsChipActive(range) {
+  document.querySelectorAll('#statsChips .stats-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.range === range);
+  });
+}
+
+function setStatsRange(range) {
+  statsRange = range;
+  setStatsChipActive(range);
+  const now = new Date();
+  const from = document.getElementById('statFrom');
+  const to   = document.getElementById('statTo');
+  const fmt = d => d.toISOString().split('T')[0];
+  if (range === 'week') {
+    const day = now.getDay(); // 0=Sun
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+    from.value = fmt(monday);
+    to.value = fmt(now);
+  } else if (range === 'month') {
+    from.value = fmt(new Date(now.getFullYear(), now.getMonth(), 1));
+    to.value = fmt(now);
+  } else { // all
+    from.value = '';
+    to.value = '';
+  }
+  renderStats();
+}
+
+function onStatsDateChange() {
+  statsRange = 'custom';
+  setStatsChipActive('custom'); // none active for custom
+  renderStats();
+}
+
+function computeStats(routes, fromMs, toMs) {
+  let visited = 0, leads = 0, lcl = 0;
+  let totalSpanMs = 0;
+
+  routes.forEach(r => {
+    const inRange = [];
+    (r.stops || []).forEach(s => {
+      if (!s.status || !s.statusAt) return;
+      const t = new Date(s.statusAt).getTime();
+      if (isNaN(t)) return;
+      if (fromMs !== null && t < fromMs) return;
+      if (toMs   !== null && t > toMs)   return;
+      visited++;
+      inRange.push(t);
+      if (s.status === 'Lead') leads++;
+      else if (s.status === 'Lead Contact Later') lcl++;
+    });
+    // Active canvassing time on this route = span between first and last marked stop
+    if (inRange.length >= 2) {
+      totalSpanMs += Math.max(...inRange) - Math.min(...inRange);
+    }
+  });
+
+  const conversions = leads + lcl;
+  const convPct = visited ? Math.round(conversions / visited * 100) : 0;
+  const avgMsPerLead = conversions > 0 && totalSpanMs > 0 ? totalSpanMs / conversions : null;
+  return { visited, leads, lcl, conversions, convPct, avgMsPerLead };
+}
+
+function formatAvgTime(ms) {
+  if (ms === null) return '—';
+  const mins = ms / 60000;
+  if (mins < 1) return '<1m';
+  if (mins < 60) return `${Math.round(mins)}m`;
+  const h = Math.floor(mins / 60), m = Math.round(mins % 60);
+  return `${h}h ${m}m`;
+}
+
+function renderStats() {
+  if (!statsRoutesCache) return;
+  const fromVal = document.getElementById('statFrom').value;
+  const toVal   = document.getElementById('statTo').value;
+  const fromMs = fromVal ? new Date(fromVal + 'T00:00:00').getTime() : null;
+  const toMs   = toVal   ? new Date(toVal   + 'T23:59:59').getTime() : null;
+
+  const s = computeStats(statsRoutesCache, fromMs, toMs);
+
+  document.getElementById('statHeroPct').textContent = s.convPct + '%';
+  document.getElementById('statVisited').textContent = s.visited;
+  document.getElementById('statLeads').textContent = s.leads;
+  document.getElementById('statLCL').textContent = s.lcl;
+  document.getElementById('statTotalConv').textContent = s.conversions;
+  document.getElementById('statAvgTime').textContent = formatAvgTime(s.avgMsPerLead);
+
+  // Motivational subline based on conversion rate
+  const sub = document.getElementById('statHeroSub');
+  if (s.visited === 0) sub.textContent = 'No visits in this range yet — get out there! 🚪';
+  else if (s.convPct >= 25) sub.textContent = "🔥 You're on fire! Outstanding work!";
+  else if (s.convPct >= 15) sub.textContent = '💪 Strong numbers — keep the momentum!';
+  else if (s.convPct >= 5)  sub.textContent = '📈 Solid effort — every door gets you closer!';
+  else sub.textContent = 'Keep knocking — your next lead is right around the corner! 🚪';
 }
 
 // ── ROUTE DETAIL ─────────────────────────────────
