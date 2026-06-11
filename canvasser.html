@@ -907,6 +907,7 @@ function renderDetailStops() {
         ${nearJobs.length ? `<div class="stop-note" style="color:#15803d;font-weight:600;display:flex;align-items:center;gap:6px;">${nearJobs.map(j => x(j.description)).join(' · ')}<span onclick="dismissJobBadgeC(${i}, event)" style="color:#6b7280;font-weight:400;cursor:pointer;" title="Not a match">✕</span></div>` : ''}
         ${s.note ? `<div class="stop-note">📝 ${x(s.note)}</div>` : ''}
         ${s.paintIssues && s.paintIssues.length ? `<div class="stop-note">🎨 ${x(s.paintIssues.join(', '))}${s.paintSides && s.paintSides.length ? ' — ' + x(buildSidePhrase(s.paintSides)) : ''}${s.mailSent ? ' ✉' : ''}</div>` : ''}
+        ${i === 0 ? `<button onclick="navigateToStop(0, event)" style="margin-top:9px;background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;-webkit-tap-highlight-color:transparent;">🧭 Navigate to Start</button>` : ''}
       </div>
       <div class="stop-right">
         ${opt
@@ -916,6 +917,19 @@ function renderDetailStops() {
       </div>
     </div>`;
   }).join('');
+}
+
+// Open the phone's map app with driving directions to a stop
+function navigateToStop(i, event) {
+  if (event) event.stopPropagation();
+  const s = (currentRoute && currentRoute.stops) ? currentRoute.stops[i] : null;
+  if (!s) return;
+  // Prefer exact coordinates; fall back to the address text
+  const dest = (s.lat && s.lng)
+    ? `${s.lat},${s.lng}`
+    : encodeURIComponent([s.street, s.city].filter(Boolean).join(', '));
+  // Universal Google Maps directions link — opens the Maps app on iOS/Android
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`, '_blank');
 }
 
 // ── CLOCK IN / OUT / BREAK ────────────────────────
