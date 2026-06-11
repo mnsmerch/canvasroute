@@ -2789,8 +2789,73 @@ function interpolatePolyline(path, stepMeters) {
   return result;
 }
 
+// Initial bearing (degrees) from point A to point B
+function bearingDeg(a, b) {
+  const f1 = a.lat() * Math.PI / 180, f2 = b.lat() * Math.PI / 180;
+  const dl = (b.lng() - a.lng()) * Math.PI / 180;
+  const y = Math.sin(dl) * Math.cos(f2);
+  const x = Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+// Point `dist` meters from (lat,lng) along `bearing` degrees
+function offsetLatLng(lat, lng, bearing, dist) {
+  const R = 6371000, d = dist / R, t = bearing * Math.PI / 180;
+  const f1 = lat * Math.PI / 180, l1 = lng * Math.PI / 180;
+  const f2 = Math.asin(Math.sin(f1) * Math.cos(d) + Math.cos(f1) * Math.sin(d) * Math.cos(t));
+  const l2 = l1 + Math.atan2(Math.sin(t) * Math.sin(d) * Math.cos(f1), Math.cos(d) - Math.sin(f1) * Math.sin(f2));
+  return new google.maps.LatLng(f2 * 180 / Math.PI, l2 * 180 / Math.PI);
+}
+
+// Geocode with automatic retry on rate-limit (OVER_QUERY_LIMIT)
+function geocodeLocation(latLng, retries = 4) {
+  return new Promise(resolve => {
+    const attempt = (n, delay) => {
+      geocoder.geocode({ location: latLng }, (results, status) => {
+        if (status === 'OK') return resolve(results || []);
+        if (status === 'OVER_QUERY_LIMIT' && n > 0) {
+          setTimeout(() => attempt(n - 1, Math.min(delay * 2, 2500)), delay);
+          return;
+        }
+        resolve([]); // ZERO_RESULTS / error → nothing here
+      });
+    };
+    attempt(retries, 300);
+  });
+}
+
+// Pull a real house address out of a geocoder result set and record it (deduped)
+function recordTraceResult(results) {
+  if (!results || !results.length) return;
+  const r = results.find(res => res.types.includes('street_address'))
+         || results.find(res => res.types.includes('premise'));
+  if (!r) return;
+  const key = r.formatted_address;
+  if (traceFoundAddresses.has(key)) return;
+
+  const comps = r.address_components;
+  const get  = t => (comps.find(c => c.types.includes(t)) || {}).short_name || '';
+  const getL = t => (comps.find(c => c.types.includes(t)) || {}).long_name  || '';
+  const streetNum = get('street_number');
+  // Require a house number unless it's an explicit premise — avoids adding bare roads/intersections
+  if (!streetNum && !r.types.includes('premise')) return;
+
+  const lat = r.geometry.location.lat(), lng = r.geometry.location.lng();
+  // Near-duplicate guard: same house returned with slightly different formatting
+  for (const a of traceFoundAddresses.values()) {
+    if (haversineMeters(lat, lng, a.lat, a.lng) < 8) return;
+  }
+  traceFoundAddresses.set(key, {
+    fullAddress: r.formatted_address,
+    street: [streetNum, getL('route')].filter(Boolean).join(' '),
+    city: [getL('locality') || getL('sublocality') || '', get('administrative_area_level_1'), get('postal_code')].filter(Boolean).join(', '),
+    lat, lng
+  });
+}
+
 async function processTracePath() {
-  const STEP = 12; // meters between samples
+  const STEP = 9;            // meters between samples along the path
+  const OFFSETS = [15, 30];  // meters to probe perpendicular to EACH side (catches set-back houses)
   const samples = interpolatePolyline(tracePath, STEP);
   traceFoundAddresses = new Map();
 
@@ -2802,20 +2867,33 @@ async function processTracePath() {
   scanDetail.textContent = '';
   scanModal.classList.add('on');
 
-  // Process ONE at a time so addresses are stored in strict path order.
-  // The first sample to discover an address sets its position in the Map —
-  // since Map preserves insertion order, no sorting needed afterward.
+  // Process samples in path order. At each point probe the centerline plus
+  // both sides of the street, so houses set back from the road aren't missed.
   for (let i = 0; i < samples.length; i++) {
-    await reverseGeocodeTrace(samples[i]);
+    const here = samples[i];
+    const prev = samples[Math.max(0, i - 1)];
+    const next = samples[Math.min(samples.length - 1, i + 1)];
+    const dir = bearingDeg(prev, next);
+
+    const probes = [here]; // centerline
+    OFFSETS.forEach(off => {
+      probes.push(offsetLatLng(here.lat(), here.lng(), (dir + 90) % 360, off));  // one side
+      probes.push(offsetLatLng(here.lat(), here.lng(), (dir + 270) % 360, off)); // other side
+    });
+
+    const resultsArr = await Promise.all(probes.map(p => geocodeLocation(p)));
+    resultsArr.forEach(recordTraceResult); // center first, then sides — keeps order tidy
+
     const pct = Math.round((i + 1) / samples.length * 100);
     scanBar.style.width = pct + '%';
-    scanDetail.textContent = `${i + 1} of ${samples.length} points · ${traceFoundAddresses.size} addresses found`;
+    scanDetail.textContent = `${i + 1} of ${samples.length} points · ${traceFoundAddresses.size} houses found`;
+    await new Promise(r => setTimeout(r, 25)); // gentle pacing to respect rate limits
   }
 
   scanModal.classList.remove('on');
   cancelTrace(); // clean up drawing layer
 
-  const addresses = [...traceFoundAddresses.values()]; // already in path order (Map insertion order)
+  const addresses = [...traceFoundAddresses.values()]; // path order (Map insertion order)
   if (!addresses.length) {
     alert('No house addresses found along that path. Try tracing along a residential street closer to the houses.');
     return;
@@ -2824,35 +2902,10 @@ async function processTracePath() {
   renderTraceReview(addresses);
 }
 
-function reverseGeocodeTrace(latLng) {
-  return new Promise(resolve => {
-    geocoder.geocode({ location: latLng }, (results, status) => {
-      if (status === 'OK' && results && results.length) {
-        const r = results.find(res => res.types.includes('street_address'))
-               || results.find(res => res.types.includes('premise'));
-        // Only store if not seen yet — first sample to find it wins, preserving path order
-        if (r && !traceFoundAddresses.has(r.formatted_address)) {
-          const comps = r.address_components;
-          const get  = t => (comps.find(c => c.types.includes(t)) || {}).short_name || '';
-          const getL = t => (comps.find(c => c.types.includes(t)) || {}).long_name  || '';
-          traceFoundAddresses.set(r.formatted_address, {
-            fullAddress: r.formatted_address,
-            street: [get('street_number'), getL('route')].filter(Boolean).join(' '),
-            city: [getL('locality') || getL('sublocality') || '', get('administrative_area_level_1'), get('postal_code')].filter(Boolean).join(', '),
-            lat: r.geometry.location.lat(),
-            lng: r.geometry.location.lng()
-          });
-        }
-      }
-      resolve();
-    });
-  });
-}
-
 function renderTraceReview(addresses) {
   traceReviewAddresses = addresses;
   traceChecked = new Set(addresses.map((_, i) => i)); // all checked by default
-  document.getElementById('traceInfoBar').innerHTML = `<strong>${addresses.length} addresses</strong> found along your path. Uncheck any you don't want to add, then click <strong>Add to Route</strong>.`;
+  document.getElementById('traceInfoBar').innerHTML = `<strong>${addresses.length} houses</strong> found along your path. Uncheck any you don't want, then click <strong>Add to Route</strong>. Missed one? After adding, <strong>right-click it on the map</strong> to slot it in.`;
   document.getElementById('mbTrace').innerHTML = addresses.map((addr, i) => `
     <div style="display:flex;align-items:center;gap:8px;padding:7px 8px;background:#fff;border:1px solid var(--rule);border-radius:5px;margin-bottom:4px;">
       <input type="checkbox" id="trc_${i}" checked onchange="toggleTraceItem(${i})"
