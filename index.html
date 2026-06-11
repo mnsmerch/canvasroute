@@ -524,6 +524,23 @@ html, body { height: 100%; overflow: hidden; font-family: Arial, sans-serif; bac
         <div class="past-legend-row"><div class="pl-dot" style="background:#1a2744;"></div><span>Current route</span></div>
         <div class="past-legend-row"><div class="pl-dot" style="background:#9ca3af;border:1px solid #ccc;"></div><span>Already canvassed</span></div>
         <div class="past-legend-row" id="legendJobRow" style="display:none;"><div class="pl-dot" style="background:#287c45;border:1px solid #fff;"></div><span>Completed job</span></div>
+        <div id="jobDateFilterBox" style="display:none;border-top:1px solid var(--rule);margin-top:6px;padding-top:6px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#1a2744;cursor:pointer;">
+            <input type="checkbox" id="jobDateToggle" onchange="onJobDateToggle()" style="cursor:pointer;margin:0;">
+            Painted in date range
+          </label>
+          <div id="jobDateInputs" style="display:none;margin-top:6px;">
+            <div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;">
+              <span style="font-size:10px;color:#6b7280;width:30px;">From</span>
+              <input type="date" id="jobDateFrom" onchange="applyJobDateFilter()" style="font-size:11px;padding:3px 5px;border:1px solid var(--rule);border-radius:3px;">
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;">
+              <span style="font-size:10px;color:#6b7280;width:30px;">To</span>
+              <input type="date" id="jobDateTo" onchange="applyJobDateFilter()" style="font-size:11px;padding:3px 5px;border:1px solid var(--rule);border-radius:3px;">
+            </div>
+            <div id="jobDateCount" style="font-size:10px;color:#15803d;font-weight:700;margin-top:5px;"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1788,11 +1805,43 @@ function clearJobMarkers() {
   jobMarkers = [];
 }
 
+// ── COMPLETED-JOB DATE FILTER ─────────────────────
+let jobDateFilter = { on: false, from: null, to: null };
+
+// A job's date is its id (a Date.now() timestamp = when it was logged/completed)
+function jobInDateRange(job) {
+  if (!jobDateFilter.on) return true;
+  const t = Number(job.id);
+  if (isNaN(t)) return true; // no usable date — always show
+  if (jobDateFilter.from !== null && t < jobDateFilter.from) return false;
+  if (jobDateFilter.to   !== null && t > jobDateFilter.to)   return false;
+  return true;
+}
+
+function onJobDateToggle() {
+  jobDateFilter.on = document.getElementById('jobDateToggle').checked;
+  document.getElementById('jobDateInputs').style.display = jobDateFilter.on ? 'block' : 'none';
+  applyJobDateFilter();
+}
+
+function applyJobDateFilter() {
+  const fromV = document.getElementById('jobDateFrom').value;
+  const toV   = document.getElementById('jobDateTo').value;
+  jobDateFilter.from = fromV ? new Date(fromV + 'T00:00:00').getTime() : null;
+  jobDateFilter.to   = toV   ? new Date(toV   + 'T23:59:59').getTime() : null;
+  renderJobMarkers();
+}
+
 function renderJobMarkers() {
   clearJobMarkers();
-  if (!completedJobs.length) { document.getElementById('legendJobRow').style.display = 'none'; return; }
+  if (!completedJobs.length) {
+    document.getElementById('legendJobRow').style.display = 'none';
+    document.getElementById('jobDateFilterBox').style.display = 'none';
+    return;
+  }
   if (!jobInfoWindow) jobInfoWindow = new google.maps.InfoWindow();
-  completedJobs.forEach(job => {
+  const shown = completedJobs.filter(jobInDateRange);
+  shown.forEach(job => {
     const m = new google.maps.Marker({
       position: { lat: job.lat, lng: job.lng },
       map,
@@ -1813,7 +1862,11 @@ function renderJobMarkers() {
     jobMarkers.push(m);
   });
   document.getElementById('legendJobRow').style.display = 'flex';
+  document.getElementById('jobDateFilterBox').style.display = 'block';
   document.getElementById('pastLegend').classList.add('on');
+  // Update the count line when the filter is active
+  const countEl = document.getElementById('jobDateCount');
+  if (countEl) countEl.textContent = jobDateFilter.on ? `Showing ${shown.length} of ${completedJobs.length} painted homes` : '';
 }
 
 async function loadCompletedJobs() {
