@@ -2854,7 +2854,7 @@ function recordTraceResult(results) {
 }
 
 async function processTracePath() {
-  const STEP = 9;            // meters between samples along the path
+  const STEP = 15;           // meters between samples along the path
   const OFFSETS = [15, 30];  // meters to probe perpendicular to EACH side (catches set-back houses)
   const samples = interpolatePolyline(tracePath, STEP);
   traceFoundAddresses = new Map();
