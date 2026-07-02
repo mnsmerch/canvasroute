@@ -917,6 +917,16 @@ let db = null;
 let routesCache = []; // in-memory cache — all reads come from here (synchronous)
 let syncTimer = null;
 
+// Diff-based sync state: what we believe is currently in the cloud (id -> JSON string).
+// Lets us push ONLY changed/added/removed routes instead of rewriting the whole
+// collection on every save (which broke past Firestore's 500-op batch limit).
+let syncedBaseline = new Map();
+let syncInProgress = false;
+let syncDirty = false;
+function rebuildBaseline(routes) {
+  syncedBaseline = new Map(routes.map(r => [String(r.id), JSON.stringify(r)]));
+}
+
 function initFirebase() {
   firebase.initializeApp(FIREBASE_CONFIG);
   db = firebase.firestore();
@@ -930,6 +940,7 @@ async function loadRoutesFromCloud() {
     const snap = await db.collection('routes').orderBy('id', 'desc').get();
     routesCache = snap.docs.map(d => d.data());
     cloudLoadedSuccessfully = true;
+    rebuildBaseline(routesCache); // cloud == what we just loaded
     // Also keep localStorage in sync as backup
     try { localStorage.setItem('canvasroute_backup', JSON.stringify(routesCache)); } catch(_) {}
     console.log(`Loaded ${routesCache.length} routes from Firestore`);
@@ -3062,8 +3073,25 @@ async function syncToFirestore(routes) {
     return;
   }
 
+  // Don't overlap commits — if a save lands mid-sync, run again when this one finishes
+  if (syncInProgress) { syncDirty = true; return; }
+
+  // Diff against what we believe is already in the cloud, so we only push what
+  // changed — instead of rewriting every route on every save (which fails once
+  // the collection grows past Firestore's 500-operation batch limit).
+  const current = new Map(routes.map(r => [String(r.id), r]));
+  const upserts = [];
+  current.forEach((r, id) => {
+    const serialized = JSON.stringify(r);
+    if (syncedBaseline.get(id) !== serialized) upserts.push({ id, r, serialized });
+  });
+  const deletes = [];
+  syncedBaseline.forEach((_v, id) => { if (!current.has(id)) deletes.push(id); });
+
+  if (!upserts.length && !deletes.length) return; // nothing to do
+
   // SAFETY GUARD: never delete everything — if routes is empty and cloud has actual route data, abort
-  if (routes.length === 0) {
+  if (routes.length === 0 && deletes.length > 0) {
     try {
       const check = await db.collection('routes').get();
       const hasRealRoutes = check.docs.some(d => !d.id.startsWith('_'));
@@ -3076,18 +3104,26 @@ async function syncToFirestore(routes) {
     } catch(_) { return; }
   }
 
+  syncInProgress = true;
   showSync('Saving to cloud…');
   try {
-    const newIds = new Set(routes.map(r => String(r.id)));
-    const snap = await db.collection('routes').get();
-    const batch = db.batch();
-    // Only delete docs that we intentionally removed — never touch reserved _team/_schedule docs
-    snap.docs.forEach(doc => { if (!newIds.has(doc.id) && !doc.id.startsWith('_')) batch.delete(doc.ref); });
-    routes.forEach(r => {
-      const ref = db.collection('routes').doc(String(r.id));
-      batch.set(ref, r);
-    });
-    await batch.commit();
+    // Flatten ops and commit in chunks well under Firestore's 500-op batch limit
+    const ops = [];
+    deletes.forEach(id => ops.push({ type: 'delete', id }));
+    upserts.forEach(u => ops.push({ type: 'set', id: u.id, data: u.r }));
+    const CHUNK = 450;
+    for (let i = 0; i < ops.length; i += CHUNK) {
+      const batch = db.batch();
+      ops.slice(i, i + CHUNK).forEach(op => {
+        const ref = db.collection('routes').doc(op.id);
+        if (op.type === 'delete') batch.delete(ref);
+        else batch.set(ref, op.data);
+      });
+      await batch.commit();
+    }
+    // Commit succeeded — update our picture of what's in the cloud
+    deletes.forEach(id => syncedBaseline.delete(id));
+    upserts.forEach(u => syncedBaseline.set(u.id, u.serialized));
     // Keep localStorage in sync
     try { localStorage.setItem('canvasroute_backup', JSON.stringify(routes)); } catch(_) {}
     showSync('✓ Saved to cloud');
@@ -3096,6 +3132,10 @@ async function syncToFirestore(routes) {
     console.error('Firestore sync error:', e);
     showSync('⚠ Offline — saved locally');
     setTimeout(hideSync, 3000);
+  } finally {
+    syncInProgress = false;
+    // A save arrived while we were committing — flush the latest state now
+    if (syncDirty) { syncDirty = false; setTimeout(() => syncToFirestore(routesCache), 0); }
   }
 }
 
@@ -3190,13 +3230,15 @@ function clearPastMarkers() {
   pastMarkers = [];
 }
 
+let pastMarkersRunToken = 0; // cancels a stale incremental render when a newer one starts
 function loadPastMarkersFromStorage() {
   clearPastMarkers();
+  const myToken = ++pastMarkersRunToken;
   const routes = getSavedRoutes();
   if (!routes.length) { document.getElementById('pastLegend').classList.remove('on'); return; }
 
   // Deduplicate by lat/lng — but track ALL routes a stop belongs to
-  const seen = new Map(); // key -> [routeIds]
+  const seen = new Map(); // key -> { s, routeIds }
   routes.forEach(route => {
     route.stops.forEach(s => {
       const key = `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`;
@@ -3205,37 +3247,44 @@ function loadPastMarkersFromStorage() {
     });
   });
 
-  seen.forEach(({ s, routeIds }) => {
-    // Build tooltip listing all routes this stop appears in
-    const routeNames = routeIds.map(id => {
-      const r = routes.find(r => r.id === id);
-      return r ? r.name : '';
-    }).filter(Boolean);
-
-    const tooltipLines = s.street + '\n📂 ' + routeNames.join('\n📂 ');
-
-    const m = new google.maps.Marker({
-      position: { lat: s.lat, lng: s.lng },
-      map,
-      icon: mkPastIcon(),
-      title: tooltipLines,
-      zIndex: 1
-    });
-
-    // Click opens saved routes modal and highlights the first matching route
-    m.addListener('click', () => {
-      openSavedRoutes();
-      // After modal renders, scroll to and flash the first route card
-      setTimeout(() => {
-        const targetId = routeIds[0];
-        highlightRouteCard(targetId, routeIds);
-      }, 120);
-    });
-
-    pastMarkers.push(m);
-  });
+  // Precompute id -> name once (avoids an O(n²) routes.find per marker)
+  const routeNameById = new Map(routes.map(r => [r.id, r.name]));
 
   document.getElementById('pastLegend').classList.add('on');
+
+  // Build markers in small batches across animation frames so a large history
+  // never blocks the main thread long enough to trigger the browser's
+  // "Page Unresponsive — Wait / Kill" dialog.
+  const entries = Array.from(seen.values());
+  const CHUNK = 150;
+  let i = 0;
+  function step() {
+    if (myToken !== pastMarkersRunToken) return; // superseded by a newer render
+    const end = Math.min(i + CHUNK, entries.length);
+    for (; i < end; i++) {
+      const { s, routeIds } = entries[i];
+      const routeNames = routeIds.map(id => routeNameById.get(id)).filter(Boolean);
+      const tooltipLines = s.street + '\n📂 ' + routeNames.join('\n📂 ');
+
+      const m = new google.maps.Marker({
+        position: { lat: s.lat, lng: s.lng },
+        map,
+        icon: mkPastIcon(),
+        title: tooltipLines,
+        zIndex: 1
+      });
+
+      // Click opens saved routes modal and highlights the first matching route
+      m.addListener('click', () => {
+        openSavedRoutes();
+        setTimeout(() => highlightRouteCard(routeIds[0], routeIds), 120);
+      });
+
+      pastMarkers.push(m);
+    }
+    if (i < entries.length) requestAnimationFrame(step);
+  }
+  step();
 }
 
 function highlightRouteCard(primaryId, allIds) {
@@ -4615,6 +4664,7 @@ async function forceReloadFromCloud() {
     }
     routesCache = loaded;
     cloudLoadedSuccessfully = true;
+    rebuildBaseline(routesCache); // cloud == what we just reloaded
     try { localStorage.setItem('canvasroute_backup', JSON.stringify(routesCache)); } catch(_) {}
     loadPastMarkersFromStorage();
     renderSavedRoutes();
