@@ -3107,20 +3107,29 @@ async function syncToFirestore(routes) {
   syncInProgress = true;
   showSync('Saving to cloud…');
   try {
-    // Flatten ops and commit in chunks well under Firestore's 500-op batch limit
+    // Flatten ops and commit in chunks bounded by BOTH the 500-op batch limit
+    // and Firestore's ~11 MiB request-size limit (the actual failure here).
     const ops = [];
-    deletes.forEach(id => ops.push({ type: 'delete', id }));
-    upserts.forEach(u => ops.push({ type: 'set', id: u.id, data: u.r }));
-    const CHUNK = 450;
-    for (let i = 0; i < ops.length; i += CHUNK) {
-      const batch = db.batch();
-      ops.slice(i, i + CHUNK).forEach(op => {
-        const ref = db.collection('routes').doc(op.id);
-        if (op.type === 'delete') batch.delete(ref);
-        else batch.set(ref, op.data);
-      });
-      await batch.commit();
+    deletes.forEach(id => ops.push({ type: 'delete', id, bytes: 0 }));
+    upserts.forEach(u => ops.push({ type: 'set', id: u.id, data: u.r, bytes: u.serialized.length }));
+    const MAX_OPS = 450;
+    const MAX_BYTES = 9 * 1024 * 1024; // stay well under the ~11 MiB request cap
+    let batch = db.batch();
+    let batchOps = 0, batchBytes = 0;
+    for (const op of ops) {
+      // Start a fresh batch if adding this op would blow either cap
+      // (always allow at least one op per batch so a big single doc still gets sent)
+      if (batchOps > 0 && (batchOps + 1 > MAX_OPS || batchBytes + op.bytes > MAX_BYTES)) {
+        await batch.commit();
+        batch = db.batch();
+        batchOps = 0; batchBytes = 0;
+      }
+      const ref = db.collection('routes').doc(op.id);
+      if (op.type === 'delete') batch.delete(ref);
+      else batch.set(ref, op.data);
+      batchOps++; batchBytes += op.bytes;
     }
+    if (batchOps > 0) await batch.commit();
     // Commit succeeded — update our picture of what's in the cloud
     deletes.forEach(id => syncedBaseline.delete(id));
     upserts.forEach(u => syncedBaseline.set(u.id, u.serialized));
